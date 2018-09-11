@@ -114,22 +114,23 @@ def url_is_absolute(url):
 
 
 def get_url_attribute(element, attr_name, base_url, allow_relative=False):
-    """Get the URI corresponding to the ``attr_name`` attribute.
+   """Get the URI corresponding to the ``attr_name`` attribute.
 
-    Return ``None`` if:
+   Return ``None`` if:
 
-    * the attribute is empty or missing or,
-    * the value is a relative URI but the document has no base URI and
-      ``allow_relative`` is ``False``.
+   * the attribute is empty or missing or,
+   * the value is a relative URI but the document has no base URI and
+     ``allow_relative`` is ``False``.
 
-    Otherwise return an URI, absolute if possible.
+   Otherwise return an URI, absolute if possible.
 
-    """
-    value = element.get(attr_name, '').strip()
-    if value:
-        return url_join(
-            base_url or '', value, allow_relative, '<%s %s="%s">',
-            (element.tag, attr_name, value))
+   """
+   value = element.get(attr_name, '').strip()
+   if value:
+       if element.tag == 'a':
+           return value
+       else:
+           return url_join(base_url or '', value, allow_relative, '<%s %s="%s">', (element.tag, attr_name, value))
 
 
 def url_join(base_url, url, allow_relative, context, context_args):
