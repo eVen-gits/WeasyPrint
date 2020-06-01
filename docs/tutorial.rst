@@ -28,6 +28,28 @@ If you have many documents to convert you may prefer using the Python API
 in long-lived processes to avoid paying the start-up costs every time.
 
 
+Adjusting Document Dimensions
+.............................
+
+Currently, WeasyPrint does not provide support for adjusting page size
+or document margins via command-line flags. This is best accomplished
+with the CSS ``@page`` at-rule. Consider the following example:
+
+.. code-block:: css
+
+  @page {
+    size: Letter; /* Change from the default size of A4 */
+    margin: 2.5cm; /* Set margin on each page */
+  }
+
+There is much more which can be achieved with the ``@page`` at-rule,
+such as page numbers, headers, etc. Read more about the page_ at-rule,
+and find an example here_.
+
+.. _page: https://developer.mozilla.org/en-US/docs/Web/CSS/@page
+.. _here: https://weasyprint.org
+
+
 As a Python library
 -------------------
 .. currentmodule:: weasyprint
@@ -59,7 +81,7 @@ The Python version of the above example goes like this:
 Instantiating HTML and CSS objects
 ..................................
 
-If you have a file name, an absolute URL or a readable file-like object,
+If you have a file name, an absolute URL or a readable :term:`file object`,
 you can just pass it to :class:`HTML` or :class:`CSS` to create an instance.
 Alternatively, use a named argument so that no guessing is involved:
 
@@ -81,7 +103,7 @@ that, although the argument must be named:
 
 .. code-block:: python
 
-    from weasyprint import HTML
+    from weasyprint import HTML, CSS
 
     # HTML('<h1>foo') would be filename
     HTML(string='''
@@ -119,7 +141,7 @@ Once you have a :class:`HTML` object, call its :meth:`~HTML.write_pdf` or
 PDF or PNG file.
 
 Without arguments, these methods return a byte string in memory. If you
-pass a file name or a writable file-like object, they will write there
+pass a file name or a writable :term:`file object`, they will write there
 directly instead. (**Warning**: with a filename, these methods will
 overwrite existing files silently.)
 
@@ -140,7 +162,7 @@ on any type of cairo surface.
 
 .. [#] Pages in the same document do not always have the same size.
 
-See the :ref:`python-api` for details. A few random example:
+See the :ref:`python-api` for details. A few random examples:
 
 .. code-block:: python
 
@@ -176,10 +198,11 @@ See the :ref:`python-api` for details. A few random example:
     #         2. CSS 2.1 addressing model (page 7)
     #       4. CSS design principles (page 8)
     def print_outline(bookmarks, indent=0):
-        for i, (label, (page, _, _), children) in enumerate(bookmarks, 1):
+        for i, bookmark in enumerate(bookmarks, 1):
+            page = bookmark.destination[0]
             print('%s%d. %s (page %d)' % (
-                ' ' * indent, i, label.lstrip('0123456789. '), page))
-            print_outline(children, indent + 2)
+                ' ' * indent, i, bookmark.label.lstrip('0123456789. '), page))
+            print_outline(bookmark.children, indent + 2)
     print_outline(document.make_bookmark_tree())
 
 .. code-block:: python
@@ -219,18 +242,36 @@ to the default fetcher:
             graph_data = map(float, url[6:].split(','))
             return dict(string=generate_graph(graph_data),
                         mime_type='image/png')
-        else:
-            return weasyprint.default_url_fetcher(url)
+        return default_url_fetcher(url)
 
     source = '<img src="graph:42,10.3,87">'
     HTML(string=source, url_fetcher=my_fetcher).write_pdf('out.pdf')
 
-Flask-WeasyPrint_ makes use of a custom URL fetcher to integrate WeasyPrint
-with a Flask_ application and short-cut the network for resources that are
-within the same application.
+Flask-WeasyPrint_ for Flask_ and Django-Weasyprint_ for Django_ both make
+use of a custom URL fetcher to integrate WeasyPrint and use the filesystem
+instead of a network call for static and media files.
+
+A custom fetcher should be returning a :obj:`dict` with
+
+* One of ``string`` (a :obj:`bytestring <bytes>`) or ``file_obj`` (a
+  :term:`file object`).
+* Optionally: ``mime_type``, a MIME type extracted e.g. from a *Content-Type*
+  header. If not provided, the type is guessed from the file extension in the
+  URL.
+* Optionally: ``encoding``, a character encoding extracted e.g. from a
+  *charset* parameter in a *Content-Type* header
+* Optionally: ``redirected_url``, the actual URL of the resource if there were
+  e.g. HTTP redirects.
+* Optionally: ``filename``, the filename of the resource. Usually derived from
+  the *filename* parameter in a *Content-Disposition* header
+
+If a ``file_obj`` is given, the resource will be closed automatically by
+the function internally used by WeasyPrint to retreive data.
 
 .. _Flask-WeasyPrint: http://packages.python.org/Flask-WeasyPrint/
 .. _Flask: http://flask.pocoo.org/
+.. _Django-WeasyPrint: https://pypi.org/project/django-weasyprint/
+.. _Django: https://www.djangoproject.com/
 
 
 Logging
@@ -250,23 +291,10 @@ by configuring the ``weasyprint`` logger object:
     logger = logging.getLogger('weasyprint')
     logger.addHandler(logging.FileHandler('/path/to/weasyprint.log'))
 
-The ``INFO`` level is used to report the rendering progress. It is useful to
-get feedback when WeasyPrint is launched in a terminal (using the ``--verbose``
-option), or to give this feedback to end users when used as a library. To catch
-these logs, you can for example use a filter:
-
-.. code-block:: python
-
-    import logging
-
-    class LoggerFilter(logging.Filter):
-        def filter(self, record):
-            if record.level == logging.INFO:
-                print(record.getMessage())
-                return False
-
-    logger = logging.getLogger('weasyprint')
-    logger.addFilter(LoggerFilter())
+The ``weasyprint.progress`` logger is used to report the rendering progress. It
+is useful to get feedback when WeasyPrint is launched in a terminal (using the
+``--verbose`` or ``--debug`` option), or to give this feedback to end users
+when used as a library.
 
 See the documentation of the :mod:`logging` module for details.
 
@@ -321,7 +349,7 @@ WeasyPrint as a PNG image. Start it with:
 Security
 --------
 
-When used with untrusted HTMl or untrusted CSS, WeasyPrint can meet security
+When used with untrusted HTML or untrusted CSS, WeasyPrint can meet security
 problems. You will need extra configuration in your Python application to avoid
 high memory use, endless renderings or local files leaks.
 
@@ -435,9 +463,9 @@ Leaks can include (but are not restricted to):
 - network configuration (IPv4 and IPv6 support, IP addressing, firewall
   configuration, using ``http://`` URIs and tracking time used to render
   documents),
-- hardware and software used for graphical rendering (as Cairo renderings
+- hardware and software used for graphical rendering (as cairo renderings
   can change with CPU and GPU features),
-- Python, Cairo, Pango and other libraries versions (implementation details
+- Python, cairo, Pango and other libraries versions (implementation details
   lead to different renderings).
 
 SVG images

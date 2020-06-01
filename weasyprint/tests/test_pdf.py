@@ -4,14 +4,12 @@
 
     Test PDF-related code, including metadata, bookmarks and hyperlinks.
 
-    :copyright: Copyright 2011-2014 Simon Sapin and contributors, see AUTHORS.
-    :license: BSD, see LICENSE for details.
-
 """
 
 import hashlib
 import io
 import os
+import re
 
 import cairocffi
 import pytest
@@ -26,9 +24,18 @@ TOP = 842
 # Right of the page is 210mm ~= 595pt
 RIGHT = 595
 
-# TODO: Why do we need these -1 and +1?
-TOP -= 1
-RIGHT += 1
+
+def assert_rect_almost_equal(rect, values):
+    """Test that PDF rect string equals given values.
+
+    We avoid rounding errors by allowing a delta of 1, as both WeasyPrint and
+    cairo round coordinates in unpredictable ways.
+
+    """
+    if isinstance(rect, bytes):
+        rect = rect.decode('ascii')
+    for a, b in zip(rect.strip(' []').split(), values):
+        assert abs(int(a) - b) <= 1
 
 
 @assert_no_logs
@@ -44,7 +51,7 @@ def test_pdf_parser(width, height):
     surface.show_page()
     surface.finish()
 
-    sizes = [page.get_value('MediaBox', '\[(.+?)\]').strip()
+    sizes = [page.get_value('MediaBox', '\\[(.+?)\\]').strip()
              for page in pdf.PDFFile(fileobj).pages]
     assert sizes == ['0 0 {} {}'.format(width, height).encode('ascii')]
 
@@ -77,15 +84,15 @@ def test_bookmarks_1():
     pdf_file = pdf.PDFFile(fileobj)
     outlines = pdf_file.catalog.get_indirect_dict('Outlines', pdf_file)
     assert outlines.get_type() == 'Outlines'
-    assert outlines.get_value('Count', '(.*)') == b'-2'
+    assert outlines.get_value('Count', '(.*)') == b'-5'
     o1 = outlines.get_indirect_dict('First', pdf_file)
     assert o1.get_value('Title', '(.*)') == b'(a)'
     o11 = o1.get_indirect_dict('First', pdf_file)
     assert o11.get_value('Title', '(.*)') == b'(b)'
     o12 = o11.get_indirect_dict('Next', pdf_file)
     assert o12.get_value('Title', '(.*)') == b'(c)'
-    o12 = o12.get_indirect_dict('Next', pdf_file)
-    assert o12.get_value('Title', '(.*)') == b'(d)'
+    o13 = o12.get_indirect_dict('Next', pdf_file)
+    assert o13.get_value('Title', '(.*)') == b'(d)'
     o2 = o1.get_indirect_dict('Next', pdf_file)
     assert o2.get_value('Title', '(.*)') == b'(e)'
 
@@ -147,32 +154,32 @@ def test_bookmarks_4():
     pdf_file = pdf.PDFFile(fileobj)
     outlines = pdf_file.catalog.get_indirect_dict('Outlines', pdf_file)
     assert outlines.get_type() == 'Outlines'
-    assert outlines.get_value('Count', '(.*)') == b'-4'
+    assert outlines.get_value('Count', '(.*)') == b'-11'
     o1 = outlines.get_indirect_dict('First', pdf_file)
     assert o1.get_value('Title', '(.*)') == b'(Title 1)'
     o2 = o1.get_indirect_dict('Next', pdf_file)
     assert o2.get_value('Title', '(.*)') == b'(Title 2)'
-    assert o2.get_value('Count', '(.*)') == b'-3'
+    assert o2.get_value('Count', '(.*)') == b'4'
     o3 = o2.get_indirect_dict('First', pdf_file)
     assert o3.get_value('Title', '(.*)') == b'(Title 3)'
     o4 = o3.get_indirect_dict('Next', pdf_file)
     assert o4.get_value('Title', '(.*)') == b'(Title 4)'
-    assert o4.get_value('Count', '(.*)') == b'-1'
+    assert o4.get_value('Count', '(.*)') == b'1'
     o5 = o4.get_indirect_dict('First', pdf_file)
     assert o5.get_value('Title', '(.*)') == b'(Title 5)'
     o6 = o4.get_indirect_dict('Next', pdf_file)
     assert o6.get_value('Title', '(.*)') == b'(Title 6)'
     o7 = o2.get_indirect_dict('Next', pdf_file)
     assert o7.get_value('Title', '(.*)') == b'(Title 7)'
-    assert o7.get_value('Count', '(.*)') == b'-1'
+    assert o7.get_value('Count', '(.*)') == b'2'
     o8 = o7.get_indirect_dict('First', pdf_file)
     assert o8.get_value('Title', '(.*)') == b'(Title 8)'
-    assert o8.get_value('Count', '(.*)') == b'-1'
+    assert o8.get_value('Count', '(.*)') == b'1'
     o9 = o8.get_indirect_dict('First', pdf_file)
     assert o9.get_value('Title', '(.*)') == b'(Title 9)'
     o10 = o7.get_indirect_dict('Next', pdf_file)
     assert o10.get_value('Title', '(.*)') == b'(Title 10)'
-    assert o10.get_value('Count', '(.*)') == b'-1'
+    assert o10.get_value('Count', '(.*)') == b'1'
     o11 = o10.get_indirect_dict('First', pdf_file)
     assert o11.get_value('Title', '(.*)') == b'(Title 11)'
 
@@ -196,7 +203,7 @@ def test_bookmarks_5():
     pdf_file = pdf.PDFFile(fileobj)
     outlines = pdf_file.catalog.get_indirect_dict('Outlines', pdf_file)
     assert outlines.get_type() == 'Outlines'
-    assert outlines.get_value('Count', '(.*)') == b'-2'
+    assert outlines.get_value('Count', '(.*)') == b'-5'
     o1 = outlines.get_indirect_dict('First', pdf_file)
     assert o1.get_value('Title', '(.*)') == b'(1)'
     o2 = o1.get_indirect_dict('First', pdf_file)
@@ -236,7 +243,7 @@ def test_bookmarks_6():
     pdf_file = pdf.PDFFile(fileobj)
     outlines = pdf_file.catalog.get_indirect_dict('Outlines', pdf_file)
     assert outlines.get_type() == 'Outlines'
-    assert outlines.get_value('Count', '(.*)') == b'-3'
+    assert outlines.get_value('Count', '(.*)') == b'-9'
     o1 = outlines.get_indirect_dict('First', pdf_file)
     assert o1.get_value('Title', '(.*)') == b'(1)'
     o2 = o1.get_indirect_dict('First', pdf_file)
@@ -268,7 +275,7 @@ def test_bookmarks_7():
     assert outlines.get_type() == 'Outlines'
     o1 = outlines.get_indirect_dict('First', pdf_file)
     assert o1.get_value('Title', '(.*)') == b'(a)'
-    y = float(o1.get_value('Dest', '\[(.+?)\]').strip().split()[-2])
+    y = float(o1.get_value('Dest', '\\[(.+?)\\]').strip().split()[-2])
 
     fileobj = io.BytesIO()
     FakeHTML(string='<h2>a</h2>').write_pdf(zoom=1.5, target=fileobj)
@@ -279,8 +286,49 @@ def test_bookmarks_7():
     o1 = outlines.get_indirect_dict('First', pdf_file)
     assert o1.get_value('Title', '(.*)') == b'(a)'
     assert (
-        float(o1.get_value('Dest', '\[(.+?)\]').strip().split()[-2]) ==
+        float(o1.get_value('Dest', '\\[(.+?)\\]').strip().split()[-2]) ==
         round(y * 1.5))
+
+
+@assert_no_logs
+@requires('cairo', (1, 15, 4))
+def test_bookmarks_8():
+    fileobj = io.BytesIO()
+    FakeHTML(string='''
+      <h1>a</h1>
+      <h2>b</h2>
+      <h3>c</h3>
+      <h2 style="bookmark-state: closed">d</h2>
+      <h3>e</h3>
+      <h4>f</h4>
+      <h1>g</h1>
+    ''').write_pdf(target=fileobj)
+    # a
+    # |_ b
+    # |  |_ c
+    # |_ d (closed)
+    # |  |_ e
+    # |     |_ f
+    # g
+    pdf_file = pdf.PDFFile(fileobj)
+    outlines = pdf_file.catalog.get_indirect_dict('Outlines', pdf_file)
+    assert outlines.get_type() == 'Outlines'
+    # d is closed, the number of displayed outlines is len(a, b, c, d, g) == 5
+    assert outlines.get_value('Count', '(.*)') == b'-5'
+    o1 = outlines.get_indirect_dict('First', pdf_file)
+    assert o1.get_value('Title', '(.*)') == b'(a)'
+    o11 = o1.get_indirect_dict('First', pdf_file)
+    assert o11.get_value('Title', '(.*)') == b'(b)'
+    o111 = o11.get_indirect_dict('First', pdf_file)
+    assert o111.get_value('Title', '(.*)') == b'(c)'
+    o12 = o11.get_indirect_dict('Next', pdf_file)
+    assert o12.get_value('Title', '(.*)') == b'(d)'
+    o121 = o12.get_indirect_dict('First', pdf_file)
+    assert o121.get_value('Title', '(.*)') == b'(e)'
+    o1211 = o121.get_indirect_dict('First', pdf_file)
+    assert o1211.get_value('Title', '(.*)') == b'(f)'
+    o2 = o1.get_indirect_dict('Next', pdf_file)
+    assert o2.get_value('Title', '(.*)') == b'(g)'
 
 
 @assert_no_logs
@@ -309,7 +357,7 @@ def test_links():
       <p id=hello>Hello, World</p>
       <p id=lipsum>
         <a style="display: block; page-break-before: always; height: 30pt"
-           href="#hel%6Co"></a>
+           href="#hel%6Co"></a>a
       </p>
     ''', base_url=resource_filename('<inline HTML>')).write_pdf(target=fileobj)
     pdf_file = pdf.PDFFile(fileobj)
@@ -320,24 +368,24 @@ def test_links():
     # 30pt wide (like the image), 20pt high (like line-height)
     assert links[0].get_value('URI', '(.*)') == b'(http://weasyprint.org)'
     assert links[0].get_value('S', '(.*)') == b'/URI'
-    assert links[0].get_value('Rect', '(.*)') == '[ {} {} {} {} ]'.format(
-        0, TOP - 20, 30, TOP).encode('ascii')
+    assert_rect_almost_equal(
+        links[0].get_value('Rect', '(.*)'), (0, TOP - 20, 30, TOP))
 
     # The image itself: 30*30pt
     assert links[1].get_value('URI', '(.*)') == b'(http://weasyprint.org)'
     assert links[1].get_value('S', '(.*)') == b'/URI'
-    assert links[1].get_value('Rect', '(.*)') == '[ {} {} {} {} ]'.format(
-        0, TOP - 30, 30, TOP).encode('ascii')
+    assert_rect_almost_equal(
+        links[1].get_value('Rect', '(.*)'), (0, TOP - 30, 30, TOP))
 
     # 32pt wide (image + 2 * 1pt of border), 20pt high
-    # TODO: destination seems to be currently broken in cairo, see
-    # https://lists.cairographics.org/archives/cairo/2018-August/028694.html
+    # TODO: replace these commented tests now that we use named destinations
     # assert links[2].get_value('Subtype', '(.*)') == b'/Link'
     # dest = links[2].get_value('Dest', '(.*)').strip(b'[]').split()
     # assert dest[-4] == b'/XYZ'
     # assert [round(float(value)) for value in dest[-3:]] == […]
-    assert links[2].get_value('Rect', '(.*)') == '[ {} {} {} {} ]'.format(
-        10, TOP - 100 - 20, 10 + 32, TOP - 100).encode('ascii')
+    assert_rect_almost_equal(
+        links[2].get_value('Rect', '(.*)'),
+        (10, TOP - 100 - 20, 10 + 32, TOP - 100))
 
     # The image itself: 32*32pt
     # TODO: same as above
@@ -345,22 +393,31 @@ def test_links():
     # dest = links[3].get_value('Dest', '(.*)').strip(b'[]').split()
     # assert dest[-4] == b'/XYZ'
     # assert [round(float(value)) for value in dest[-3:]] == […]
-    assert links[3].get_value('Rect', '(.*)') == '[ {} {} {} {} ]'.format(
-        10, TOP - 100 - 32, 10 + 32, TOP - 100).encode('ascii')
+    assert_rect_almost_equal(
+        links[3].get_value('Rect', '(.*)'),
+        (10, TOP - 100 - 32, 10 + 32, TOP - 100))
 
     # 100% wide (block), 30pt high
     assert links[4].get_value('Subtype', '(.*)') == b'/Link'
     dest = links[4].get_value('Dest', '(.*)').strip(b'[]').split()
-    assert dest[-4] == b'/XYZ'
-    assert [round(float(value)) for value in dest[-3:]] == [
-        0, TOP - 200, 0]
-    assert links[4].get_value('Rect', '(.*)') == '[ {} {} {} {} ]'.format(
-        0, TOP - 30, RIGHT, TOP).encode('ascii')
+    assert dest == [b'(hello)']
+    names = (
+        pdf_file.catalog
+        .get_indirect_dict('Names', pdf_file)
+        .get_indirect_dict('Dests', pdf_file)
+        .byte_string).decode('ascii')
+    assert_rect_almost_equal(
+        re.search(
+            '\\(hello\\) \\[\\d+ \\d+ R /XYZ (\\d+ \\d+ \\d+)]', names
+        ).group(1),
+        (0, TOP - 200, 0))
+    assert_rect_almost_equal(
+        links[4].get_value('Rect', '(.*)'), (0, TOP - 30, RIGHT, TOP))
 
     # 100% wide (block), 0pt high
     fileobj = io.BytesIO()
     FakeHTML(
-        string='<a href="../lipsum" style="display: block">',
+        string='<a href="../lipsum" style="display: block"></a>a',
         base_url='http://weasyprint.org/foo/bar/').write_pdf(target=fileobj)
     pdf_file = pdf.PDFFile(fileobj)
     link, = [
@@ -369,8 +426,8 @@ def test_links():
     assert (
         link.get_value('URI', '(.*)') == b'(http://weasyprint.org/foo/lipsum)')
     assert link.get_value('S', '(.*)') == b'/URI'
-    assert link.get_value('Rect', '(.*)') == '[ {} {} {} {} ]'.format(
-        0, TOP, RIGHT, TOP).encode('ascii')
+    assert_rect_almost_equal(
+        link.get_value('Rect', '(.*)'), (0, TOP, RIGHT, TOP))
 
 
 @assert_no_logs
@@ -379,14 +436,14 @@ def test_relative_links():
     # Relative URI reference without a base URI: allowed for anchors
     fileobj = io.BytesIO()
     FakeHTML(
-        string='<a href="../lipsum" style="display: block">',
+        string='<a href="../lipsum" style="display: block"></a>a',
         base_url=None).write_pdf(target=fileobj)
     pdf_file = pdf.PDFFile(fileobj)
     annots = pdf_file.pages[0].get_indirect_dict_array('Annots', pdf_file)[0]
     assert annots.get_value('URI', '(.*)') == b'(../lipsum)'
     assert annots.get_value('S', '(.*)') == b'/URI'
-    assert annots.get_value('Rect', '(.*)') == '[ {} {} {} {} ]'.format(
-        0, TOP, RIGHT, TOP).encode('ascii')
+    assert_rect_almost_equal(
+        annots.get_value('Rect', '(.*)'), (0, TOP, RIGHT, TOP))
 
 
 @assert_no_logs
@@ -411,15 +468,24 @@ def test_relative_links_internal():
     # Internal URI reference without a base URI: OK
     fileobj = io.BytesIO()
     FakeHTML(
-        string='<a href="#lipsum" id="lipsum" style="display: block">',
+        string='<a href="#lipsum" id="lipsum" style="display: block"></a>a',
         base_url=None).write_pdf(target=fileobj)
     pdf_file = pdf.PDFFile(fileobj)
     annots = pdf_file.pages[0].get_indirect_dict_array('Annots', pdf_file)[0]
-    dest = annots.get_value('Dest', '(.*)').strip(b'[]').split()
-    assert dest[-4] == b'/XYZ'
-    assert round(float(dest[-2])) == TOP
-    rect = annots.get_value('Rect', '(.*)').strip(b'[]').split()
-    assert [round(float(value)) for value in rect] == [0, TOP, RIGHT, TOP]
+    dest = annots.get_value('Dest', '(.*)')
+    assert dest == b'(lipsum)'
+    names = (
+        pdf_file.catalog
+        .get_indirect_dict('Names', pdf_file)
+        .get_indirect_dict('Dests', pdf_file)
+        .byte_string).decode('ascii')
+    assert_rect_almost_equal(
+        re.search(
+            '\\(lipsum\\) \\[\\d+ \\d+ R /XYZ (\\d+ \\d+ \\d+)]', names
+        ).group(1),
+        (0, TOP, 0))
+    assert_rect_almost_equal(
+        annots.get_value('Rect', '(.*)'), (0, TOP, RIGHT, TOP))
 
 
 @assert_no_logs
@@ -427,15 +493,24 @@ def test_relative_links_internal():
 def test_relative_links_anchors():
     fileobj = io.BytesIO()
     FakeHTML(
-        string='<div style="-weasy-link: url(#lipsum)" id="lipsum">',
+        string='<div style="-weasy-link: url(#lipsum)" id="lipsum"></div>a',
         base_url=None).write_pdf(target=fileobj)
     pdf_file = pdf.PDFFile(fileobj)
     annots = pdf_file.pages[0].get_indirect_dict_array('Annots', pdf_file)[0]
-    dest = annots.get_value('Dest', '(.*)').strip(b'[]').split()
-    assert dest[-4] == b'/XYZ'
-    assert round(float(dest[-2])) == TOP
-    rect = annots.get_value('Rect', '(.*)').strip(b'[]').split()
-    assert [round(float(value)) for value in rect] == [0, TOP, RIGHT, TOP]
+    dest = annots.get_value('Dest', '(.*)')
+    assert dest == b'(lipsum)'
+    names = (
+        pdf_file.catalog
+        .get_indirect_dict('Names', pdf_file)
+        .get_indirect_dict('Dests', pdf_file)
+        .byte_string).decode('ascii')
+    assert_rect_almost_equal(
+        re.search(
+            '\\(lipsum\\) \\[\\d+ \\d+ R /XYZ (\\d+ \\d+ \\d+)]', names
+        ).group(1),
+        (0, TOP, 0))
+    assert_rect_almost_equal(
+        annots.get_value('Rect', '(.*)'), (0, TOP, RIGHT, TOP))
 
 
 @assert_no_logs
@@ -446,15 +521,24 @@ def test_missing_links():
         FakeHTML(string='''
           <style> a { display: block; height: 15pt } </style>
           <a href="#lipsum"></a>
-          <a href="#missing" id="lipsum"></a>
+          <a href="#missing" id="lipsum"></a>a
         ''', base_url=None).write_pdf(target=fileobj)
     pdf_file = pdf.PDFFile(fileobj)
     annots = pdf_file.pages[0].get_indirect_dict_array('Annots', pdf_file)[0]
-    dest = annots.get_value('Dest', '(.*)').strip(b'[]').split()
-    assert dest[-4] == b'/XYZ'
-    assert round(float(dest[-2])) == TOP - 15
-    rect = annots.get_value('Rect', '(.*)').strip(b'[]').split()
-    assert [round(float(value)) for value in rect] == [0, TOP - 15, RIGHT, TOP]
+    dest = annots.get_value('Dest', '(.*)')
+    assert dest == b'(lipsum)'
+    names = (
+        pdf_file.catalog
+        .get_indirect_dict('Names', pdf_file)
+        .get_indirect_dict('Dests', pdf_file)
+        .byte_string).decode('ascii')
+    assert_rect_almost_equal(
+        re.search(
+            '\\(lipsum\\) \\[\\d+ \\d+ R /XYZ (\\d+ \\d+ \\d+)]', names
+        ).group(1),
+        (0, TOP - 15, 0))
+    assert_rect_almost_equal(
+        annots.get_value('Rect', '(.*)'), (0, TOP - 15, RIGHT, TOP))
     assert len(logs) == 1
     assert 'ERROR: No anchor #missing for internal URI reference' in logs[0]
 
@@ -486,7 +570,7 @@ def test_document_info():
       <meta name=keywords content="html ,\tcss,
                                    pdf,css">
       <meta name=description content="Blah… ">
-      <meta name=dcterms.created content=2011-04>
+      <meta name=dcterms.created content=2011-04-21T23:00:00Z>
       <meta name=dcterms.modified content=2013-07-21T23:46+01:00>
     ''').write_pdf(target=fileobj)
     info = pdf.PDFFile(fileobj).info
@@ -497,7 +581,7 @@ def test_document_info():
     assert info.get_value('Keywords', '(.*)') == b'(html, css, pdf)'
     assert info.get_value('Subject', '(.*)') == (
         b'<FEFF0042006C0061006820260020>')
-    assert info.get_value('CreationDate', '(.*)') == b'(20110401000000)'
+    assert info.get_value('CreationDate', '(.*)') == b"(20110421230000+00'00)"
     assert info.get_value('ModDate', '(.*)') == b"(20130721234600+01'00)"
 
 

@@ -4,13 +4,9 @@
 
     Layout for floating boxes.
 
-    :copyright: Copyright 2011-2014 Simon Sapin and contributors, see AUTHORS.
-    :license: BSD, see LICENSE for details.
-
 """
 
 from ..formatting_structure import boxes
-from .markers import list_marker_layout
 from .min_max import handle_min_max_width
 from .percentages import resolve_percentages, resolve_position_percentages
 from .preferred import shrink_to_fit
@@ -25,10 +21,9 @@ def float_width(box, context, containing_block):
         box.width = shrink_to_fit(context, box, containing_block.width)
 
 
-def float_layout(context, box, containing_block, device_size, absolute_boxes,
-                 fixed_boxes):
+def float_layout(context, box, containing_block, absolute_boxes, fixed_boxes):
     """Set the width and position of floating ``box``."""
-    # avoid a circular imports
+    # Avoid circular imports
     from .blocks import block_container_layout
     from .flex import flex_layout
     from .inlines import inline_replaced_box_width_height
@@ -58,7 +53,7 @@ def float_layout(context, box, containing_block, device_size, absolute_boxes,
         box.position_y += clearance
 
     if isinstance(box, boxes.BlockReplacedBox):
-        inline_replaced_box_width_height(box, device_size=None)
+        inline_replaced_box_width_height(box, containing_block)
     elif box.width == 'auto':
         float_width(box, context, containing_block)
 
@@ -69,17 +64,16 @@ def float_layout(context, box, containing_block, device_size, absolute_boxes,
         context.create_block_formatting_context()
         box, _, _, _, _ = block_container_layout(
             context, box, max_position_y=float('inf'),
-            skip_stack=None, device_size=device_size, page_is_empty=False,
+            skip_stack=None, page_is_empty=False,
             absolute_boxes=absolute_boxes, fixed_boxes=fixed_boxes,
             adjoining_margins=None)
-        list_marker_layout(context, box)
         context.finish_block_formatting_context(box)
     elif isinstance(box, boxes.FlexContainerBox):
         box, _, _, _, _ = flex_layout(
             context, box, max_position_y=float('inf'),
             skip_stack=None, containing_block=containing_block,
-            device_size=device_size, page_is_empty=False,
-            absolute_boxes=absolute_boxes, fixed_boxes=fixed_boxes)
+            page_is_empty=False, absolute_boxes=absolute_boxes,
+            fixed_boxes=fixed_boxes)
     else:
         assert isinstance(box, boxes.BlockReplacedBox)
 
@@ -194,7 +188,37 @@ def avoid_collisions(context, box, containing_block, outer=True):
                 # No solution, we must put the box here
         break
 
+    # See https://www.w3.org/TR/CSS21/visuren.html#floats
+    # Boxes that can’t collide with floats are:
+    # - floats
+    # - line boxes
+    # - table wrappers
+    # - block-level replaced box
+    # - element establishing new formatting contexts (not handled)
+    assert (
+        (box.style['float'] in ('right', 'left')) or
+        isinstance(box, boxes.LineBox) or
+        box.is_table_wrapper or
+        isinstance(box, boxes.BlockReplacedBox))
+
+    # The x-position of the box depends on its type.
     position_x = max_left_bound
+    if box.style['float'] == 'none':
+        if containing_block.style['direction'] == 'rtl':
+            if isinstance(box, boxes.LineBox):
+                # The position of the line is the position of the cursor, at
+                # the right bound.
+                position_x = max_right_bound
+            elif box.is_table_wrapper:
+                # The position of the right border of the table is at the right
+                # bound.
+                position_x = max_right_bound - box_width
+            else:
+                # The position of the right border of the replaced box is at
+                # the right bound.
+                assert isinstance(box, boxes.BlockReplacedBox)
+                position_x = max_right_bound - box_width
+
     available_width = max_right_bound - max_left_bound
 
     if not outer:

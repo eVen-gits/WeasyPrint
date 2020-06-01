@@ -4,9 +4,6 @@
 
     Test the final, drawn results and compare PNG images pixel per pixel.
 
-    :copyright: Copyright 2011-2018 Simon Sapin and contributors, see AUTHORS.
-    :license: BSD, see LICENSE for details.
-
 """
 
 import os
@@ -16,30 +13,43 @@ import cairocffi as cairo
 
 from ..testing_utils import FakeHTML, resource_filename
 
-
 # RGBA to native-endian ARGB
 as_pixel = (
     lambda x: x[:-1][::-1] + x[-1:]
     if sys.byteorder == 'little' else
     lambda x: x[-1:] + x[:-1])
 
-_ = as_pixel(b'\xff\xff\xff\xff')  # white
-R = as_pixel(b'\xff\x00\x00\xff')  # red
-B = as_pixel(b'\x00\x00\xff\xff')  # blue
-G = as_pixel(b'\x00\xff\x00\xff')  # lime green
-V = as_pixel(b'\xBF\x00\x40\xff')  # Average of 1*B and 3*r.
-S = as_pixel(b'\xff\x3f\x3f\xff')  # r above r above #fff
-r = as_pixel(b'\xff\x00\x00\xff')  # red
-g = as_pixel(b'\x00\x80\x00\xff')  # half green
-b = as_pixel(b'\x00\x00\x80\xff')  # half blue
-v = as_pixel(b'\x80\x00\x80\xff')  # Average of B and r.
-a = as_pixel(b'\x00\x00\xfe\xff')  # JPG is lossy...
-p = as_pixel(b'\xc0\x00\x3f\xff')  # r above r above B above #fff.
+PIXELS_BY_CHAR = dict(
+    _=as_pixel(b'\xff\xff\xff\xff'),  # white
+    R=as_pixel(b'\xff\x00\x00\xff'),  # red
+    B=as_pixel(b'\x00\x00\xff\xff'),  # blue
+    G=as_pixel(b'\x00\xff\x00\xff'),  # lime green
+    V=as_pixel(b'\xBF\x00\x40\xff'),  # average of 1*B and 3*R.
+    S=as_pixel(b'\xff\x3f\x3f\xff'),  # R above R above #fff
+    r=as_pixel(b'\xff\x00\x00\xff'),  # red
+    g=as_pixel(b'\x00\x80\x00\xff'),  # half green
+    b=as_pixel(b'\x00\x00\x80\xff'),  # half blue
+    v=as_pixel(b'\x80\x00\x80\xff'),  # average of B and R.
+    h=as_pixel(b'\x40\x00\x40\xff'),  # half average of B and R.
+    a=as_pixel(b'\x00\x00\xfe\xff'),  # JPG is lossy...
+    p=as_pixel(b'\xc0\x00\x3f\xff'),  # R above R above B above #fff.
+)
+
+# NOTE: "r" is not half red on purpose. In the pixel strings it has
+# better contrast with "B" than does "R". eg. "rBBBrrBrB" vs "RBBBRRBRB".
+
+
+def parse_pixels(pixels, pixels_overrides=None):
+    chars = dict(PIXELS_BY_CHAR, **(pixels_overrides or {}))
+    lines = [line.split('#')[0].strip() for line in pixels.splitlines()]
+    return [b''.join(chars[char] for char in line) for line in lines if line]
 
 
 def assert_pixels(name, expected_width, expected_height, expected_pixels,
                   html):
     """Helper testing the size of the image and the pixels values."""
+    if isinstance(expected_pixels, str):
+        expected_pixels = parse_pixels(expected_pixels)
     assert len(expected_pixels) == expected_height
     assert len(expected_pixels[0]) == expected_width * 4
     expected_raw = b''.join(expected_pixels)

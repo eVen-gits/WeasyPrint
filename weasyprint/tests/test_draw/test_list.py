@@ -4,15 +4,12 @@
 
     Test how lists are drawn.
 
-    :copyright: Copyright 2011-2018 Simon Sapin and contributors, see AUTHORS.
-    :license: BSD, see LICENSE for details.
-
 """
 
 import pytest
 
-from . import B, _, assert_pixels, r
 from ..testing_utils import SANS_FONTS, assert_no_logs
+from . import assert_pixels
 
 
 @assert_no_logs
@@ -22,34 +19,34 @@ from ..testing_utils import SANS_FONTS, assert_no_logs
      #                ######      <li> width: 12 - 7 - 2 = 3px
      #              --            list marker margin: 0.5em = 2px
      #      ********              list marker image is 4px wide
-     [
-        _ + _ + _ + _ + _ + _ + _ + _ + _ + _ + _ + _,
-        _ + _ + _ + _ + _ + _ + _ + _ + _ + _ + _ + _,
-        _ + _ + r + B + B + B + _ + _ + _ + _ + _ + _,
-        _ + _ + B + B + B + B + _ + _ + _ + _ + _ + _,
-        _ + _ + B + B + B + B + _ + _ + _ + _ + _ + _,
-        _ + _ + B + B + B + B + _ + _ + _ + _ + _ + _,
-        _ + _ + _ + _ + _ + _ + _ + _ + _ + _ + _ + _,
-        _ + _ + _ + _ + _ + _ + _ + _ + _ + _ + _ + _,
-        _ + _ + _ + _ + _ + _ + _ + _ + _ + _ + _ + _,
-        _ + _ + _ + _ + _ + _ + _ + _ + _ + _ + _ + _,
-     ]),
+     '''
+        ____________
+        ____________
+        ___rBBB_____
+        ___BBBB_____
+        ___BBBB_____
+        ___BBBB_____
+        ____________
+        ____________
+        ____________
+        ____________
+     '''),
     ('inside',
      #  ++++++++++++++      ++++  <li> horizontal margins: 7px 2px
      #                ######      <li> width: 12 - 7 - 2 = 3px
      #                ********    list marker image is 4px wide: overflow
-     [
-        _ + _ + _ + _ + _ + _ + _ + _ + _ + _ + _ + _,
-        _ + _ + _ + _ + _ + _ + _ + _ + _ + _ + _ + _,
-        _ + _ + _ + _ + _ + _ + _ + r + B + B + B + _,
-        _ + _ + _ + _ + _ + _ + _ + B + B + B + B + _,
-        _ + _ + _ + _ + _ + _ + _ + B + B + B + B + _,
-        _ + _ + _ + _ + _ + _ + _ + B + B + B + B + _,
-        _ + _ + _ + _ + _ + _ + _ + _ + _ + _ + _ + _,
-        _ + _ + _ + _ + _ + _ + _ + _ + _ + _ + _ + _,
-        _ + _ + _ + _ + _ + _ + _ + _ + _ + _ + _ + _,
-        _ + _ + _ + _ + _ + _ + _ + _ + _ + _ + _ + _,
-     ])
+     '''
+        ____________
+        ____________
+        _______rBBB_
+        _______BBBB_
+        _______BBBB_
+        _______BBBB_
+        ____________
+        ____________
+        ____________
+        ____________
+     ''')
 ))
 def test_list_style_image(position, pixels):
     assert_pixels('list_style_image_' + position, 12, 10, pixels, '''
@@ -64,18 +61,18 @@ def test_list_style_image(position, pixels):
 
 @assert_no_logs
 def test_list_style_image_none():
-    assert_pixels('list_style_none', 10, 10, [
-        _ + _ + _ + _ + _ + _ + _ + _ + _ + _,
-        _ + _ + _ + _ + _ + _ + _ + _ + _ + _,
-        _ + _ + _ + _ + _ + _ + _ + _ + _ + _,
-        _ + _ + _ + _ + _ + _ + _ + _ + _ + _,
-        _ + _ + _ + _ + _ + _ + _ + _ + _ + _,
-        _ + _ + _ + _ + _ + _ + _ + _ + _ + _,
-        _ + _ + _ + _ + _ + _ + _ + _ + _ + _,
-        _ + _ + _ + _ + _ + _ + _ + _ + _ + _,
-        _ + _ + _ + _ + _ + _ + _ + _ + _ + _,
-        _ + _ + _ + _ + _ + _ + _ + _ + _ + _,
-    ], '''
+    assert_pixels('list_style_none', 10, 10, '''
+        __________
+        __________
+        __________
+        __________
+        __________
+        __________
+        __________
+        __________
+        __________
+        __________
+    ''', '''
       <style>
         @page { size: 10px }
         body { margin: 0; background: white; font-family: %s }

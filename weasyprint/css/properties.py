@@ -4,9 +4,6 @@
 
     Various data about known properties.
 
-    :copyright: Copyright 2011-2014 Simon Sapin and contributors, see AUTHORS.
-    :license: BSD, see LICENSE for details.
-
 """
 
 import collections
@@ -23,12 +20,6 @@ INITIAL_VALUES = {
     'clear': 'none',
     'clip': (),  # computed value for 'auto'
     'color': parse_color('black'),  # chosen by the user agent
-    # Means 'none', but allow `display: list-item` to increment the
-    # list-item counter. If we ever have a way for authors to query
-    # computed values (JavaScript?), this value should serialize to 'none'.
-    'counter_increment': 'auto',
-    'counter_reset': (),  # parsed value for 'none'
-    # 'counter_set': (),  # parsed value for 'none'
     'direction': 'ltr',
     'display': 'inline',
     'empty_cells': 'show',
@@ -36,16 +27,12 @@ INITIAL_VALUES = {
     'height': 'auto',
     'left': 'auto',
     'line_height': 'normal',
-    'list_style_image': ('none', None),
-    'list_style_position': 'outside',
-    'list_style_type': 'disc',
     'margin_top': Dimension(0, 'px'),
     'margin_right': Dimension(0, 'px'),
     'margin_bottom': Dimension(0, 'px'),
     'margin_left': Dimension(0, 'px'),
     'max_height': Dimension(float('inf'), 'px'),  # parsed value for 'none'
     'max_width': Dimension(float('inf'), 'px'),
-    'overflow': 'visible',
     'padding_top': Dimension(0, 'px'),
     'padding_right': Dimension(0, 'px'),
     'padding_bottom': Dimension(0, 'px'),
@@ -53,7 +40,6 @@ INITIAL_VALUES = {
     'position': 'static',
     'right': 'auto',
     'table_layout': 'auto',
-    'text_decoration': 'none',
     'top': 'auto',
     'unicode_bidi': 'normal',
     'vertical_align': 'baseline',
@@ -93,7 +79,7 @@ INITIAL_VALUES = {
     # Color 3 (REC): https://www.w3.org/TR/css3-color/
     'opacity': 1,
 
-    # Multi-column Layout (CR): https://www.w3.org/TR/css3-multicol/
+    # Multi-column Layout (WD): https://www.w3.org/TR/css-multicol-1/
     'column_width': 'auto',
     'column_count': 'auto',
     'column_gap': Dimension(1, 'em'),
@@ -103,7 +89,7 @@ INITIAL_VALUES = {
     'column_fill': 'balance',
     'column_span': 'none',
 
-    # Fonts 3 (CR): https://www.w3.org/TR/css-fonts-3/
+    # Fonts 3 (REC): https://www.w3.org/TR/css-fonts-3/
     'font_family': ('serif',),  # depends on user agent
     'font_feature_settings': 'normal',
     'font_kerning': 'auto',
@@ -120,16 +106,19 @@ INITIAL_VALUES = {
     'font_variant_position': 'normal',
     'font_weight': 400,
 
-    # Fragmentation 3 (CR): https://www.w3.org/TR/css-break-3/
+    # Fragmentation 3/4 (CR/WD): https://www.w3.org/TR/css-break-4/
+    'box_decoration_break': 'slice',
     'break_after': 'auto',
     'break_before': 'auto',
     'break_inside': 'auto',
+    'margin_break': 'auto',
     'orphans': 2,
     'widows': 2,
 
     # Generated Content 3 (WD): https://www.w3.org/TR/css-content-3/
     'bookmark_label': (('content', 'text'),),
     'bookmark_level': 'none',
+    'bookmark_state': 'open',
     'content': 'normal',
     'quotes': list('“”‘’'),  # chosen by the user agent
     'string_set': 'none',
@@ -137,15 +126,19 @@ INITIAL_VALUES = {
     # Images 3/4 (CR/WD): https://www.w3.org/TR/css4-images/
     'image_resolution': 1,  # dppx
     'image_rendering': 'auto',
+    # https://drafts.csswg.org/css-images-3/
+    'object_fit': 'fill',
+    'object_position': (('left', Dimension(50, '%'),
+                         'top', Dimension(50, '%')),),
 
-    # Paged Media 3 (WD): https://www.w3.org/TR/css3-page/
+    # Paged Media 3 (WD): https://www.w3.org/TR/css-page-3/
     'size': None,  # set to A4 in computed_values
     'page': 'auto',
     'bleed_left': 'auto',
     'bleed_right': 'auto',
     'bleed_top': 'auto',
     'bleed_bottom': 'auto',
-    'marks': 'none',
+    'marks': (),  # computed value for 'none'
 
     # Text 3/4 (WD/WD): https://www.w3.org/TR/css-text-4/
     'hyphenate_character': '‐',  # computed value chosen by the user agent
@@ -154,17 +147,17 @@ INITIAL_VALUES = {
     'hyphens': 'manual',
     'letter_spacing': 'normal',
     'tab_size': 8,
-    'text_align': '-weasy-start',
+    'text_align': 'start',
     'text_indent': Dimension(0, 'px'),
     'text_transform': 'none',
     'white_space': 'normal',
     'word_spacing': 0,  # computed value for 'normal'
 
-    # Transforms 1 (WD): https://www.w3.org/TR/css-transforms-1/
+    # Transforms 1 (CR): https://www.w3.org/TR/css-transforms-1/
     'transform_origin': (Dimension(50, '%'), Dimension(50, '%')),
     'transform': (),  # computed value for 'none'
 
-    # User Interface 3 (CR): https://www.w3.org/TR/css-ui-3/
+    # User Interface 3 (REC): https://www.w3.org/TR/css-ui-3/
     'box_sizing': 'content-box',
     'outline_color': 'currentColor',  # invert is not supported
     'outline_style': 'none',
@@ -184,6 +177,26 @@ INITIAL_VALUES = {
     'min_height': 'auto',
     'min_width': 'auto',
     'order': 0,
+
+    # Text Decoration Module 3 (CR): https://www.w3.org/TR/css-text-decor-3/
+    'text_decoration_line': 'none',
+    'text_decoration_color': 'currentColor',
+    'text_decoration_style': 'solid',
+
+    # Overflow Module 3 (WD): https://www.w3.org/TR/css-overflow-3/
+    'overflow': 'visible',
+    'text_overflow': 'clip',
+
+    # Lists Module 3 (WD): https://drafts.csswg.org/css-lists-3/
+    # Means 'none', but allow `display: list-item` to increment the
+    # list-item counter. If we ever have a way for authors to query
+    # computed values (JavaScript?), this value should serialize to 'none'.
+    'counter_increment': 'auto',
+    'counter_reset': (),  # parsed value for 'none'
+    'counter_set': (),  # parsed value for 'none'
+    'list_style_image': ('none', None),
+    'list_style_position': 'outside',
+    'list_style_type': 'disc',
 
     # Proprietary
     'anchor': None,  # computed value of 'none'
@@ -244,7 +257,9 @@ INHERITED = {
     'quotes',
     'tab_size',
     'text_align',
-    'text_decoration',
+    'text_decoration_line',
+    'text_decoration_color',
+    'text_decoration_style',
     'text_indent',
     'text_transform',
     'visibility',
@@ -281,6 +296,7 @@ TABLE_WRAPPER_BOX_PROPERTIES = {
     'clear',
     'counter_increment',
     'counter_reset',
+    'counter_set',
     'float',
     'left',
     'margin_top',

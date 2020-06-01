@@ -4,9 +4,6 @@
 
     Test the public API.
 
-    :copyright: Copyright 2011-2018 Simon Sapin and contributors, see AUTHORS.
-    :license: BSD, see LICENSE for details.
-
 """
 
 import gzip
@@ -25,7 +22,7 @@ import pytest
 
 from .. import CSS, HTML, __main__, default_url_fetcher
 from ..urls import path2url
-from .test_draw import B, _, assert_pixels_equal, image_to_pixels, r
+from .test_draw import assert_pixels_equal, image_to_pixels, parse_pixels
 from .testing_utils import (
     FakeHTML, assert_no_logs, capture_logs, http_server, resource_filename)
 
@@ -43,6 +40,7 @@ def _test_resource(class_, basename, check, **kwargs):
     check(class_(filename=absolute_path, **kwargs))
     check(class_(url, **kwargs))
     check(class_(guess=url, **kwargs))
+    url = path2url(absolute_filename.encode('utf-8'))
     check(class_(url=url, **kwargs))
     with open(absolute_filename, 'rb') as fd:
         check(class_(fd, **kwargs))
@@ -57,6 +55,7 @@ def _test_resource(class_, basename, check, **kwargs):
     relative_path = Path(relative_filename)
     check(class_(relative_filename, **kwargs))
     check(class_(relative_path, **kwargs))
+    kwargs.pop('base_url', None)
     check(class_(string=content, base_url=relative_filename, **kwargs))
     encoding = kwargs.get('encoding') or 'utf8'
     check(class_(string=content.decode(encoding),  # unicode
@@ -93,7 +92,7 @@ def _run(args, stdin=b''):
     return stdout.getvalue()
 
 
-class _fake_file(object):
+class _fake_file:
     def __init__(self):
         self.chunks = []
 
@@ -128,8 +127,9 @@ def _round_meta(pages):
                                     round(width, 6), round(height, 6)))
             links[i] = link
         bookmarks = page.bookmarks
-        for i, (level, label, (pos_x, pos_y)) in enumerate(bookmarks):
-            bookmarks[i] = level, label, (round(pos_x, 6), round(pos_y, 6))
+        for i, (level, label, (pos_x, pos_y), state) in enumerate(bookmarks):
+            bookmarks[i] = (level, label,
+                            (round(pos_x, 6), round(pos_y, 6)), state)
 
 
 @assert_no_logs
@@ -143,6 +143,7 @@ def test_html_parsing():
     filename = os.path.join('resources', 'doc1.html')
     with open(filename, encoding='utf-8') as fd:
         string = fd.read()
+    _test_resource(FakeHTML, 'doc1.html', _check_doc1, base_url=filename)
     _check_doc1(FakeHTML(string=string, base_url=filename))
     _check_doc1(FakeHTML(string=string), has_base_url=False)
     string_with_meta = string.replace(
@@ -172,65 +173,65 @@ def test_css_parsing():
 
 def check_png_pattern(png_bytes, x2=False, blank=False, rotated=False):
     if blank:
-        expected_pixels = [
-            _ + _ + _ + _ + _ + _ + _ + _,
-            _ + _ + _ + _ + _ + _ + _ + _,
-            _ + _ + _ + _ + _ + _ + _ + _,
-            _ + _ + _ + _ + _ + _ + _ + _,
-            _ + _ + _ + _ + _ + _ + _ + _,
-            _ + _ + _ + _ + _ + _ + _ + _,
-            _ + _ + _ + _ + _ + _ + _ + _,
-            _ + _ + _ + _ + _ + _ + _ + _,
-        ]
+        expected_pixels = '''
+            ________
+            ________
+            ________
+            ________
+            ________
+            ________
+            ________
+            ________
+        '''
         size = 8
     elif x2:
-        expected_pixels = [
-            _ + _ + _ + _ + _ + _ + _ + _ + _ + _ + _ + _ + _ + _ + _ + _,
-            _ + _ + _ + _ + _ + _ + _ + _ + _ + _ + _ + _ + _ + _ + _ + _,
-            _ + _ + _ + _ + _ + _ + _ + _ + _ + _ + _ + _ + _ + _ + _ + _,
-            _ + _ + _ + _ + _ + _ + _ + _ + _ + _ + _ + _ + _ + _ + _ + _,
-            _ + _ + _ + _ + r + r + B + B + B + B + B + B + _ + _ + _ + _,
-            _ + _ + _ + _ + r + r + B + B + B + B + B + B + _ + _ + _ + _,
-            _ + _ + _ + _ + B + B + B + B + B + B + B + B + _ + _ + _ + _,
-            _ + _ + _ + _ + B + B + B + B + B + B + B + B + _ + _ + _ + _,
-            _ + _ + _ + _ + B + B + B + B + B + B + B + B + _ + _ + _ + _,
-            _ + _ + _ + _ + B + B + B + B + B + B + B + B + _ + _ + _ + _,
-            _ + _ + _ + _ + B + B + B + B + B + B + B + B + _ + _ + _ + _,
-            _ + _ + _ + _ + B + B + B + B + B + B + B + B + _ + _ + _ + _,
-            _ + _ + _ + _ + _ + _ + _ + _ + _ + _ + _ + _ + _ + _ + _ + _,
-            _ + _ + _ + _ + _ + _ + _ + _ + _ + _ + _ + _ + _ + _ + _ + _,
-            _ + _ + _ + _ + _ + _ + _ + _ + _ + _ + _ + _ + _ + _ + _ + _,
-            _ + _ + _ + _ + _ + _ + _ + _ + _ + _ + _ + _ + _ + _ + _ + _,
-        ]
+        expected_pixels = '''
+            ________________
+            ________________
+            ________________
+            ________________
+            ____rrBBBBBB____
+            ____rrBBBBBB____
+            ____BBBBBBBB____
+            ____BBBBBBBB____
+            ____BBBBBBBB____
+            ____BBBBBBBB____
+            ____BBBBBBBB____
+            ____BBBBBBBB____
+            ________________
+            ________________
+            ________________
+            ________________
+        '''
         size = 16
     elif rotated:
-        expected_pixels = [
-            _ + _ + _ + _ + _ + _ + _ + _,
-            _ + _ + _ + _ + _ + _ + _ + _,
-            _ + _ + B + B + B + B + _ + _,
-            _ + _ + B + B + B + B + _ + _,
-            _ + _ + B + B + B + B + _ + _,
-            _ + _ + r + B + B + B + _ + _,
-            _ + _ + _ + _ + _ + _ + _ + _,
-            _ + _ + _ + _ + _ + _ + _ + _,
-        ]
+        expected_pixels = '''
+            ________
+            ________
+            __BBBB__
+            __BBBB__
+            __BBBB__
+            __rBBB__
+            ________
+            ________
+        '''
         size = 8
     else:
-        expected_pixels = [
-            _ + _ + _ + _ + _ + _ + _ + _,
-            _ + _ + _ + _ + _ + _ + _ + _,
-            _ + _ + r + B + B + B + _ + _,
-            _ + _ + B + B + B + B + _ + _,
-            _ + _ + B + B + B + B + _ + _,
-            _ + _ + B + B + B + B + _ + _,
-            _ + _ + _ + _ + _ + _ + _ + _,
-            _ + _ + _ + _ + _ + _ + _ + _,
-        ]
+        expected_pixels = '''
+            ________
+            ________
+            __rBBB__
+            __BBBB__
+            __BBBB__
+            __BBBB__
+            ________
+            ________
+        '''
         size = 8
     surface = cairo.ImageSurface.create_from_png(io.BytesIO(png_bytes))
     assert_pixels_equal('api_png', size, size,
                         image_to_pixels(surface, size, size),
-                        b''.join(expected_pixels))
+                        b"".join(parse_pixels(expected_pixels)))
 
 
 @assert_no_logs
@@ -313,8 +314,9 @@ def test_command_line_render(tmpdir):
     # pdf_bytes = html_obj.write_pdf()
     png_bytes = html_obj.write_png()
     x2_png_bytes = html_obj.write_png(resolution=192)
-    rotated_png_bytes = FakeHTML(string=combined, base_url='dummy.html',
-                                 media_type='screen').write_png()
+    rotated_png_bytes = FakeHTML(
+        string=combined, base_url='dummy.html',
+        media_type='screen').write_png()
     empty_png_bytes = FakeHTML(
         string=b'<style>' + css + b'</style>').write_png()
     check_png_pattern(png_bytes)
@@ -347,11 +349,11 @@ def test_command_line_render(tmpdir):
     _run(path2url(tmpdir.join('combined.html').strpath) + ' out5.png')
     assert tmpdir.join('out5.png').read_binary() == png_bytes
 
-    _run('linked.html out6.png')  # test relative URLs
+    _run('linked.html --debug out6.png')  # test relative URLs
     assert tmpdir.join('out6.png').read_binary() == png_bytes
 
-    _run('combined.html out7 -f png')
-    _run('combined.html out8 --format pdf')
+    _run('combined.html --verbose out7 -f png')
+    _run('combined.html --quiet out8 --format pdf')
     assert tmpdir.join('out7').read_binary() == png_bytes
     # assert tmpdir.join('out8').read_binary(), pdf_bytes
 
@@ -379,6 +381,8 @@ def test_command_line_render(tmpdir):
 
     stdout = _run('-f pdf combined.html -')
     assert stdout.count(b'attachment') == 0
+    stdout = _run('-f pdf combined.html -')
+    assert stdout.count(b'attachment') == 0
     stdout = _run('-f pdf -a pattern.png combined.html -')
     assert stdout.count(b'attachment') == 1
     stdout = _run('-f pdf -a style.css -a pattern.png combined.html -')
@@ -398,8 +402,30 @@ def test_command_line_render(tmpdir):
     assert logs[0].startswith('ERROR: Failed to load image')
     assert stdout == empty_png_bytes
 
+    with capture_logs() as logs:
+        stdout = _run('--format png --base-url= - -', stdin=combined)
+    assert len(logs) == 1
+    assert logs[0].startswith(
+        'ERROR: Relative URI reference without a base URI')
+    assert stdout == empty_png_bytes
+
     stdout = _run('--format png --base-url .. - -', stdin=combined)
     assert stdout == png_bytes
+
+    with pytest.raises(SystemExit):
+        _run('--info')
+
+    with pytest.raises(SystemExit):
+        _run('--version')
+
+    with pytest.raises(SystemExit):
+        _run('combined.html combined.jpg')
+
+    with pytest.raises(SystemExit):
+        _run('combined.html combined.pdf --resolution 100')
+
+    with pytest.raises(SystemExit):
+        _run('combined.html combined.png -a pattern.png')
 
 
 @assert_no_logs
@@ -417,7 +443,7 @@ def test_unicode_filenames(tmpdir):
     png_bytes = FakeHTML(string=html).write_png()
     check_png_pattern(png_bytes)
     unicode_filename = 'Unicödé'
-    if sys.platform.startswith('darwin'):
+    if sys.platform.startswith('darwin'):  # pragma: no cover
         unicode_filename = unicodedata.normalize('NFD', unicode_filename)
 
     tmpdir.chdir()
@@ -506,15 +532,8 @@ def test_low_level_api():
     assert _png_size(document.copy([page_2]).write_png()) == (6, 4)
 
 
-@assert_no_logs
-def test_bookmarks():
-    def assert_bookmarks(html, expected_by_page, expected_tree, round=False):
-        document = FakeHTML(string=html).render()
-        if round:
-            _round_meta(document.pages)
-        assert [p.bookmarks for p in document.pages] == expected_by_page
-        assert document.make_bookmark_tree() == expected_tree
-    assert_bookmarks('''
+@pytest.mark.parametrize('html, expected_by_page, expected_tree, round', (
+    ('''
         <style>* { height: 10px }</style>
         <h1>a</h1>
         <h4 style="page-break-after: always">b</h4>
@@ -522,16 +541,17 @@ def test_bookmarks():
         <h2>d</h2>
         <h1>e</h1>
     ''', [
-        [(1, 'a', (0, 0)), (4, 'b', (0, 10))],
-        [(3, 'c', (3, 2)), (2, 'd', (0, 10)), (1, 'e', (0, 20))],
+        [(1, 'a', (0, 0), 'open'), (4, 'b', (0, 10), 'open')],
+        [(3, 'c', (3, 2), 'open'), (2, 'd', (0, 10), 'open'),
+         (1, 'e', (0, 20), 'open')],
     ], [
         ('a', (0, 0, 0), [
-            ('b', (0, 0, 10), []),
-            ('c', (1, 3, 2), []),
-            ('d', (1, 0, 10), [])]),
-        ('e', (1, 0, 20), []),
-    ])
-    assert_bookmarks('''
+            ('b', (0, 0, 10), [], 'open'),
+            ('c', (1, 3, 2), [], 'open'),
+            ('d', (1, 0, 10), [], 'open')], 'open'),
+        ('e', (1, 0, 20), [], 'open'),
+    ], False),
+    ('''
         <style>
             * { height: 90px; margin: 0 0 10px 0 }
         </style>
@@ -549,33 +569,33 @@ def test_bookmarks():
         <h2>Title 11</h2>
     ''', [
         [
-            (1, 'Title 1', (0, 0)),
-            (1, 'Title 2', (0, 100)),
-            (2, 'Title 3', (20, 200)),
-            (2, 'Title 4', (0, 300)),
-            (3, 'Title 5', (0, 400))
+            (1, 'Title 1', (0, 0), 'open'),
+            (1, 'Title 2', (0, 100), 'open'),
+            (2, 'Title 3', (20, 200), 'open'),
+            (2, 'Title 4', (0, 300), 'open'),
+            (3, 'Title 5', (0, 400), 'open')
         ], [
-            (2, 'Title 6', (0, 100)),
-            (1, 'Title 7', (0, 200)),
-            (2, 'Title 8', (0, 300)),
-            (3, 'Title 9', (0, 400)),
-            (1, 'Title 10', (0, 500)),
-            (2, 'Title 11', (0, 600))
+            (2, 'Title 6', (0, 100), 'open'),
+            (1, 'Title 7', (0, 200), 'open'),
+            (2, 'Title 8', (0, 300), 'open'),
+            (3, 'Title 9', (0, 400), 'open'),
+            (1, 'Title 10', (0, 500), 'open'),
+            (2, 'Title 11', (0, 600), 'open')
         ],
     ], [
-        ('Title 1', (0, 0, 0), []),
+        ('Title 1', (0, 0, 0), [], 'open'),
         ('Title 2', (0, 0, 100), [
-            ('Title 3', (0, 20, 200), []),
+            ('Title 3', (0, 20, 200), [], 'open'),
             ('Title 4', (0, 0, 300), [
-                ('Title 5', (0, 0, 400), [])]),
-            ('Title 6', (1, 0, 100), [])]),
+                ('Title 5', (0, 0, 400), [], 'open')], 'open'),
+            ('Title 6', (1, 0, 100), [], 'open')], 'open'),
         ('Title 7', (1, 0, 200), [
             ('Title 8', (1, 0, 300), [
-                ('Title 9', (1, 0, 400), [])])]),
+                ('Title 9', (1, 0, 400), [], 'open')], 'open')], 'open'),
         ('Title 10', (1, 0, 500), [
-            ('Title 11', (1, 0, 600), [])]),
-    ])
-    assert_bookmarks('''
+            ('Title 11', (1, 0, 600), [], 'open')], 'open'),
+    ], False),
+    ('''
         <style>* { height: 10px }</style>
         <h2>A</h2> <p>depth 1</p>
         <h4>B</h4> <p>depth 2</p>
@@ -583,19 +603,19 @@ def test_bookmarks():
         <h3>D</h3> <p>depth 2</p>
         <h4>E</h4> <p>depth 3</p>
     ''', [[
-        (2, 'A', (0, 0)),
-        (4, 'B', (0, 20)),
-        (2, 'C', (0, 40)),
-        (3, 'D', (0, 60)),
-        (4, 'E', (0, 80)),
+        (2, 'A', (0, 0), 'open'),
+        (4, 'B', (0, 20), 'open'),
+        (2, 'C', (0, 40), 'open'),
+        (3, 'D', (0, 60), 'open'),
+        (4, 'E', (0, 80), 'open'),
     ]], [
         ('A', (0, 0, 0), [
-            ('B', (0, 0, 20), [])]),
+            ('B', (0, 0, 20), [], 'open')], 'open'),
         ('C', (0, 0, 40), [
             ('D', (0, 0, 60), [
-                ('E', (0, 0, 80), [])])]),
-    ])
-    assert_bookmarks('''
+                ('E', (0, 0, 80), [], 'open')], 'open')], 'open'),
+    ], False),
+    ('''
         <style>* { height: 10px; font-size: 0 }</style>
         <h2>A</h2> <p>h2 depth 1</p>
         <h4>B</h4> <p>h4 depth 2</p>
@@ -607,38 +627,62 @@ def test_bookmarks():
         <h4>H</h4> <p>h4 depth 3</p>
         <h1>I</h1> <p>h1 depth 1</p>
     ''', [[
-        (2, 'A', (0, 0)),
-        (4, 'B', (0, 20)),
-        (3, 'C', (0, 40)),
-        (5, 'D', (0, 60)),
-        (1, 'E', (0, 70)),
-        (2, 'F', (0, 90)),
-        (2, 'G', (0, 110)),
-        (4, 'H', (0, 130)),
-        (1, 'I', (0, 150)),
+        (2, 'A', (0, 0), 'open'),
+        (4, 'B', (0, 20), 'open'),
+        (3, 'C', (0, 40), 'open'),
+        (5, 'D', (0, 60), 'open'),
+        (1, 'E', (0, 70), 'open'),
+        (2, 'F', (0, 90), 'open'),
+        (2, 'G', (0, 110), 'open'),
+        (4, 'H', (0, 130), 'open'),
+        (1, 'I', (0, 150), 'open'),
     ]], [
         ('A', (0, 0, 0), [
-            ('B', (0, 0, 20), []),
+            ('B', (0, 0, 20), [], 'open'),
             ('C', (0, 0, 40), [
-                ('D', (0, 0, 60), [])])]),
+                ('D', (0, 0, 60), [], 'open')], 'open')], 'open'),
         ('E', (0, 0, 70), [
-            ('F', (0, 0, 90), []),
+            ('F', (0, 0, 90), [], 'open'),
             ('G', (0, 0, 110), [
-                ('H', (0, 0, 130), [])])]),
-        ('I', (0, 0, 150), []),
-    ])
-    assert_bookmarks('<h1>é', [[(1, 'é', (0, 0))]], [('é', (0, 0, 0), [])])
-    assert_bookmarks('''
+                ('H', (0, 0, 130), [], 'open')], 'open')], 'open'),
+        ('I', (0, 0, 150), [], 'open'),
+    ], False),
+    ('<h1>é', [
+        [(1, 'é', (0, 0), 'open')]
+    ], [
+        ('é', (0, 0, 0), [], 'open')
+    ], False),
+    ('''
         <h1 style="transform: translateX(50px)">!
-    ''', [[(1, '!', (50, 0))]], [('!', (0, 50, 0), [])])
-    assert_bookmarks('''
+    ''', [
+        [(1, '!', (50, 0), 'open')]
+    ], [
+        ('!', (0, 50, 0), [], 'open')
+    ], False),
+    ('''
+        <style>
+          img { display: block; bookmark-label: attr(alt); bookmark-level: 1 }
+        </style>
+        <img src="%s" alt="Chocolate" />
+    ''' % path2url(resource_filename('pattern.png')),
+     [[(1, 'Chocolate', (0, 0), 'open')]],
+     [('Chocolate', (0, 0, 0), [], 'open')], False),
+    ('''
         <h1 style="transform-origin: 0 0;
                    transform: rotate(90deg) translateX(50px)">!
-    ''', [[(1, '!', (0, 50))]], [('!', (0, 0, 50), [])], round=True)
-    assert_bookmarks('''
+    ''', [[(1, '!', (0, 50), 'open')]], [('!', (0, 0, 50), [], 'open')], True),
+    ('''
         <body style="transform-origin: 0 0; transform: rotate(90deg)">
         <h1 style="transform: translateX(50px)">!
-    ''', [[(1, '!', (0, 50))]], [('!', (0, 0, 50), [])], round=True)
+    ''', [[(1, '!', (0, 50), 'open')]], [('!', (0, 0, 50), [], 'open')], True),
+))
+@assert_no_logs
+def test_assert_bookmarks(html, expected_by_page, expected_tree, round):
+    document = FakeHTML(string=html).render()
+    if round:
+        _round_meta(document.pages)
+    assert [p.bookmarks for p in document.pages] == expected_by_page
+    assert document.make_bookmark_tree() == expected_tree
 
 
 @assert_no_logs
@@ -686,13 +730,20 @@ def test_links():
         {'hello': (0, 200)},
         {'lipsum': (0, 0)}
     ], [
-        [
-            ('external', 'http://weasyprint.org', (0, 0, 30, 20)),
-            ('external', 'http://weasyprint.org', (0, 0, 30, 30)),
-            ('internal', (1, 0, 0), (10, 100, 32, 20)),
-            ('internal', (1, 0, 0), (10, 100, 32, 32))
-        ],
-        [('internal', (0, 0, 200), (0, 0, 200, 30))],
+        (
+            [
+                ('external', 'http://weasyprint.org', (0, 0, 30, 20)),
+                ('external', 'http://weasyprint.org', (0, 0, 30, 30)),
+                ('internal', 'lipsum', (10, 100, 32, 20)),
+                ('internal', 'lipsum', (10, 100, 32, 32))
+            ],
+            [('hello', 0, 200)],
+        ),
+        (
+            [
+                ('internal', 'hello', (0, 0, 200, 30))
+            ],
+            [('lipsum', 0, 0)]),
     ])
 
     assert_links(
@@ -701,8 +752,8 @@ def test_links():
             <a href="../lipsum/é_%E9" style="display: block; margin: 10px 5px">
         ''', [[('external', 'http://weasyprint.org/foo/lipsum/%C3%A9_%E9',
                 (5, 10, 190, 0))]],
-        [{}], [[('external', 'http://weasyprint.org/foo/lipsum/%C3%A9_%E9',
-                 (5, 10, 190, 0))]],
+        [{}], [([('external', 'http://weasyprint.org/foo/lipsum/%C3%A9_%E9',
+                  (5, 10, 190, 0))], [])],
         base_url='http://weasyprint.org/foo/bar/')
     assert_links(
         '''
@@ -711,8 +762,8 @@ def test_links():
                         -weasy-link: url(../lipsum/é_%E9)">
         ''', [[('external', 'http://weasyprint.org/foo/lipsum/%C3%A9_%E9',
                 (5, 10, 190, 0))]],
-        [{}], [[('external', 'http://weasyprint.org/foo/lipsum/%C3%A9_%E9',
-                 (5, 10, 190, 0))]],
+        [{}], [([('external', 'http://weasyprint.org/foo/lipsum/%C3%A9_%E9',
+                  (5, 10, 190, 0))], [])],
         base_url='http://weasyprint.org/foo/bar/')
 
     # Relative URI reference without a base URI: allowed for links
@@ -721,7 +772,7 @@ def test_links():
             <body style="width: 200px">
             <a href="../lipsum" style="display: block; margin: 10px 5px">
         ''', [[('external', '../lipsum', (5, 10, 190, 0))]], [{}],
-        [[('external', '../lipsum', (5, 10, 190, 0))]], base_url=None)
+        [([('external', '../lipsum', (5, 10, 190, 0))], [])], base_url=None)
 
     # Relative URI reference without a base URI: not supported for -weasy-link
     assert_links(
@@ -729,7 +780,7 @@ def test_links():
             <body style="width: 200px">
             <div style="-weasy-link: url(../lipsum);
                         display: block; margin: 10px 5px">
-        ''', [[]], [{}], [[]], base_url=None, warnings=[
+        ''', [[]], [{}], [([], [])], base_url=None, warnings=[
             'WARNING: Ignored `-weasy-link: url("../lipsum")` at 1:1, '
             'Relative URI reference without a base URI'])
 
@@ -743,8 +794,9 @@ def test_links():
         ''', [[('internal', 'lipsum', (5, 10, 190, 0)),
                ('external', 'http://weasyprint.org/', (0, 10, 200, 0))]],
         [{'lipsum': (5, 10)}],
-        [[('internal', (0, 5, 10), (5, 10, 190, 0)),
-          ('external', 'http://weasyprint.org/', (0, 10, 200, 0))]],
+        [([('internal', 'lipsum', (5, 10, 190, 0)),
+           ('external', 'http://weasyprint.org/', (0, 10, 200, 0))],
+          [('lipsum', 5, 10)])],
         base_url=None)
 
     assert_links(
@@ -755,7 +807,7 @@ def test_links():
         ''',
         [[('internal', 'lipsum', (5, 10, 190, 0))]],
         [{'lipsum': (5, 10)}],
-        [[('internal', (0, 5, 10), (5, 10, 190, 0))]],
+        [([('internal', 'lipsum', (5, 10, 190, 0))], [('lipsum', 5, 10)])],
         base_url=None)
 
     assert_links(
@@ -768,7 +820,7 @@ def test_links():
         [[('internal', 'lipsum', (0, 0, 200, 15)),
           ('internal', 'missing', (0, 15, 200, 15))]],
         [{'lipsum': (0, 15)}],
-        [[('internal', (0, 0, 15), (0, 0, 200, 15))]],
+        [([('internal', 'lipsum', (0, 0, 200, 15))], [('lipsum', 0, 15)])],
         base_url=None,
         warnings=[
             'ERROR: No anchor #missing for internal URI reference'])
@@ -781,7 +833,7 @@ def test_links():
         ''',
         [[('internal', 'lipsum', (30, 10, 40, 200))]],
         [{'lipsum': (70, 10)}],
-        [[('internal', (0, 70, 10), (30, 10, 40, 200))]],
+        [([('internal', 'lipsum', (30, 10, 40, 200))], [('lipsum', 70, 10)])],
         round=True)
 
 
@@ -791,15 +843,21 @@ uses_relative.append('weasyprint-custom')
 
 @assert_no_logs
 def test_url_fetcher():
-    with open(resource_filename('pattern.png'), 'rb') as pattern_fd:
+    filename = resource_filename('pattern.png')
+    with open(filename, 'rb') as pattern_fd:
         pattern_png = pattern_fd.read()
 
     def fetcher(url):
         if url == 'weasyprint-custom:foo/%C3%A9_%e9_pattern':
-            return dict(string=pattern_png, mime_type='image/png')
+            return {'string': pattern_png, 'mime_type': 'image/png'}
         elif url == 'weasyprint-custom:foo/bar.css':
-            return dict(string='body { background: url(é_%e9_pattern)',
-                        mime_type='text/css')
+            return {
+                'string': 'body { background: url(é_%e9_pattern)',
+                'mime_type': 'text/css'}
+        elif url == 'weasyprint-custom:foo/bar.no':
+            return {
+                'string': 'body { background: red }',
+                'mime_type': 'text/no'}
         else:
             return default_url_fetcher(url)
 
@@ -814,12 +872,15 @@ def test_url_fetcher():
         check_png_pattern(html.write_png(stylesheets=[css]), blank=blank)
 
     test('<body><img src="pattern.png">')  # Test a "normal" URL
+    test('<body><img src="%s">' % Path(filename).as_uri())
+    test('<body><img src="%s?ignored">' % Path(filename).as_uri())
     test('<body><img src="weasyprint-custom:foo/é_%e9_pattern">')
     test('<body style="background: url(weasyprint-custom:foo/é_%e9_pattern)">')
     test('<body><li style="list-style: inside '
          'url(weasyprint-custom:foo/é_%e9_pattern)">')
     test('<link rel=stylesheet href="weasyprint-custom:foo/bar.css"><body>')
     test('<style>@import "weasyprint-custom:foo/bar.css";</style><body>')
+    test('<link rel=stylesheet href="weasyprint-custom:foo/bar.css"><body>')
 
     with capture_logs() as logs:
         test('<body><img src="custom:foo/bar">', blank=True)
@@ -827,11 +888,19 @@ def test_url_fetcher():
     assert logs[0].startswith(
         'ERROR: Failed to load image at "custom:foo/bar"')
 
+    with capture_logs() as logs:
+        test(
+            '<link rel=stylesheet href="weasyprint-custom:foo/bar.css">'
+            '<link rel=stylesheet href="weasyprint-custom:foo/bar.no"><body>')
+    assert len(logs) == 1
+    assert logs[0].startswith('ERROR: Unsupported stylesheet type text/no')
+
     def fetcher_2(url):
         assert url == 'weasyprint-custom:%C3%A9_%e9.css'
-        return dict(string='', mime_type='text/css')
-    FakeHTML(string='<link rel=stylesheet href="weasyprint-custom:'
-                    'é_%e9.css"><body>', url_fetcher=fetcher_2).render()
+        return {'string': '', 'mime_type': 'text/css'}
+    FakeHTML(
+        string='<link rel=stylesheet href="weasyprint-custom:é_%e9.css"><body',
+        url_fetcher=fetcher_2).render()
 
 
 @assert_no_logs

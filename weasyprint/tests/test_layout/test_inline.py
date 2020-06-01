@@ -4,9 +4,6 @@
 
     Tests for inline layout.
 
-    :copyright: Copyright 2011-2018 Simon Sapin and contributors, see AUTHORS.
-    :license: BSD, see LICENSE for details.
-
 """
 
 import pytest
@@ -238,9 +235,9 @@ def test_breaking_linebox_regression_2():
 def test_breaking_linebox_regression_3():
     # Regression test #1 for https://github.com/Kozea/WeasyPrint/issues/560
     page, = parse(
-      '<style>@font-face { src: url(AHEM____.TTF); font-family: ahem }</style>'
-      '<div style="width: 5.5em; font-family: ahem">'
-      'aaaa aaaa a [<span>aaa</span>]')
+        '<style>@font-face {src: url(AHEM____.TTF); font-family: ahem}</style>'
+        '<div style="width: 5.5em; font-family: ahem">'
+        'aaaa aaaa a [<span>aaa</span>]')
     html, = page.children
     body, = html.children
     div, = body.children
@@ -257,9 +254,9 @@ def test_breaking_linebox_regression_3():
 def test_breaking_linebox_regression_4():
     # Regression test #2 for https://github.com/Kozea/WeasyPrint/issues/560
     page, = parse(
-      '<style>@font-face { src: url(AHEM____.TTF); font-family: ahem }</style>'
-      '<div style="width: 5.5em; font-family: ahem">'
-      'aaaa a <span>b c</span>d')
+        '<style>@font-face {src: url(AHEM____.TTF); font-family: ahem}</style>'
+        '<div style="width: 5.5em; font-family: ahem">'
+        'aaaa a <span>b c</span>d')
     html, = page.children
     body, = html.children
     div, = body.children
@@ -275,9 +272,9 @@ def test_breaking_linebox_regression_4():
 def test_breaking_linebox_regression_5():
     # Regression test for https://github.com/Kozea/WeasyPrint/issues/580
     page, = parse(
-      '<style>@font-face { src: url(AHEM____.TTF); font-family: ahem }</style>'
-      '<div style="width: 5.5em; font-family: ahem">'
-      '<span>aaaa aaaa a a a</span><span>bc</span>')
+        '<style>@font-face {src: url(AHEM____.TTF); font-family: ahem}</style>'
+        '<div style="width: 5.5em; font-family: ahem">'
+        '<span>aaaa aaaa a a a</span><span>bc</span>')
     html, = page.children
     body, = html.children
     div, = body.children
@@ -293,9 +290,9 @@ def test_breaking_linebox_regression_5():
 def test_breaking_linebox_regression_6():
     # Regression test for https://github.com/Kozea/WeasyPrint/issues/586
     page, = parse(
-      '<style>@font-face { src: url(AHEM____.TTF); font-family: ahem }</style>'
-      '<div style="width: 5.5em; font-family: ahem">'
-      'a a <span style="white-space: nowrap">/ccc</span>')
+        '<style>@font-face {src: url(AHEM____.TTF); font-family: ahem}</style>'
+        '<div style="width: 5.5em; font-family: ahem">'
+        'a a <span style="white-space: nowrap">/ccc</span>')
     html, = page.children
     body, = html.children
     div, = body.children
@@ -308,9 +305,9 @@ def test_breaking_linebox_regression_6():
 def test_breaking_linebox_regression_7():
     # Regression test for https://github.com/Kozea/WeasyPrint/issues/660
     page, = parse(
-      '<style>@font-face { src: url(AHEM____.TTF); font-family: ahem }</style>'
-      '<div style="width: 3.5em; font-family: ahem">'
-      '<span><span>abc d e</span></span><span>f')
+        '<style>@font-face {src: url(AHEM____.TTF); font-family: ahem}</style>'
+        '<div style="width: 3.5em; font-family: ahem">'
+        '<span><span>abc d e</span></span><span>f')
     html, = page.children
     body, = html.children
     div, = body.children
@@ -319,6 +316,120 @@ def test_breaking_linebox_regression_7():
     assert line2.children[0].children[0].children[0].text == 'd'
     assert line3.children[0].children[0].children[0].text == 'e'
     assert line3.children[1].children[0].text == 'f'
+
+
+@assert_no_logs
+def test_breaking_linebox_regression_8():
+    # Regression test for https://github.com/Kozea/WeasyPrint/issues/783
+    page, = parse(
+        '<style>@font-face {src: url(AHEM____.TTF); font-family: ahem}</style>'
+        '<p style="font-family: ahem"><span>\n'
+        'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\n'
+        'bbbbbbbbbbb\n'
+        '<b>cccc</b></span>ddd</p>')
+    html, = page.children
+    body, = html.children
+    p, = body.children
+    line1, line2 = p.children
+    assert line1.children[0].children[0].text == (
+        'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaa bbbbbbbbbbb')
+    assert line2.children[0].children[0].children[0].text == 'cccc'
+    assert line2.children[1].text == 'ddd'
+
+
+@pytest.mark.xfail
+@assert_no_logs
+def test_breaking_linebox_regression_9():  # pragma: no cover
+    # Regression test for https://github.com/Kozea/WeasyPrint/issues/783
+    # TODO: inlines.can_break_inside return False for span but we can break
+    # before the <b> tag. can_break_inside should be fixed.
+    page, = parse(
+        '<style>@font-face {src: url(AHEM____.TTF); font-family: ahem}</style>'
+        '<p style="font-family: ahem"><span>\n'
+        'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaabbbbbbbbbbbbb\n'
+        '<b>cccc</b></span>ddd</p>')
+    html, = page.children
+    body, = html.children
+    p, = body.children
+    line1, line2 = p.children
+    assert line1.children[0].children[0].text == (
+        'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaabbbbbbbbbbbbb')
+    assert line2.children[0].children[0].children[0].text == 'cccc'
+    assert line2.children[1].text == 'ddd'
+
+
+@assert_no_logs
+def test_breaking_linebox_regression_10():
+    # Regression test for https://github.com/Kozea/WeasyPrint/issues/923
+    page, = parse(
+        '<style>@font-face {src: url(AHEM____.TTF); font-family: ahem}</style>'
+        '<p style="width:195px; font-family: ahem">'
+        '  <span>'
+        '    <span>xxxxxx YYY yyyyyy yyy</span>'
+        '    ZZZZZZ zzzzz'
+        '  </span> )x '
+        '</p>')
+    html, = page.children
+    body, = html.children
+    p, = body.children
+    line1, line2, line3, line4 = p.children
+    assert line1.children[0].children[0].children[0].text == 'xxxxxx YYY'
+    assert line2.children[0].children[0].children[0].text == 'yyyyyy yyy'
+    assert line3.children[0].children[0].text == 'ZZZZZZ zzzzz'
+    assert line4.children[0].text == ')x'
+
+
+@assert_no_logs
+def test_breaking_linebox_regression_11():
+    # Regression test for https://github.com/Kozea/WeasyPrint/issues/953
+    page, = parse(
+        '<style>@font-face {src: url(AHEM____.TTF); font-family: ahem}</style>'
+        '<p style="width:10em; font-family: ahem">'
+        '  line 1<br><span>123 567 90</span>x'
+        '</p>')
+    html, = page.children
+    body, = html.children
+    p, = body.children
+    line1, line2, line3 = p.children
+    assert line1.children[0].text == 'line 1'
+    assert line2.children[0].children[0].text == '123 567'
+    assert line3.children[0].children[0].text == '90'
+    assert line3.children[1].text == 'x'
+
+
+@assert_no_logs
+def test_breaking_linebox_regression_12():
+    # Regression test for https://github.com/Kozea/WeasyPrint/issues/953
+    page, = parse(
+        '<style>@font-face {src: url(AHEM____.TTF); font-family: ahem}</style>'
+        '<p style="width:10em; font-family: ahem">'
+        '  <br><span>123 567 90</span>x'
+        '</p>')
+    html, = page.children
+    body, = html.children
+    p, = body.children
+    line1, line2, line3 = p.children
+    assert line2.children[0].children[0].text == '123 567'
+    assert line3.children[0].children[0].text == '90'
+    assert line3.children[1].text == 'x'
+
+
+@assert_no_logs
+def test_breaking_linebox_regression_13():
+    # Regression test for https://github.com/Kozea/WeasyPrint/issues/953
+    page, = parse(
+        '<style>@font-face {src: url(AHEM____.TTF); font-family: ahem}</style>'
+        '<p style="width:10em; font-family: ahem">'
+        '  123 567 90 <span>123 567 90</span>x'
+        '</p>')
+    html, = page.children
+    body, = html.children
+    p, = body.children
+    line1, line2, line3 = p.children
+    assert line1.children[0].text == '123 567 90'
+    assert line2.children[0].children[0].text == '123 567'
+    assert line3.children[0].children[0].text == '90'
+    assert line3.children[1].text == 'x'
 
 
 @assert_no_logs
@@ -527,11 +638,11 @@ def test_font_stretch():
     ('<body>hyphénation', 1),  # Default: no hyphenation
     ('<body lang=fr>hyphénation', 1),  # lang only: no hyphenation
     ('<body style="hyphens: auto">hyphénation', 1),  # hyphens only: no hyph.
-    ('<body style="hyphens: auto" lang=fr>hyphénation', 2),  # both: hyph.
+    ('<body style="hyphens: auto" lang=fr>hyphénation', 4),  # both: hyph.
     ('<body>hyp&shy;hénation', 2),  # Hyphenation with soft hyphens
     ('<body style="hyphens: none">hyp&shy;hénation', 1),  # … unless disabled
 ))
-def line_count(source, lines_count):
+def test_line_count(source, lines_count):
     page, = parse(
         '<html style="width: 5em; font-family: ahem">' +
         '<style>@font-face {src:url(AHEM____.TTF); font-family:ahem}</style>' +
@@ -854,3 +965,65 @@ def test_vertical_align_13():
     img_1, = line_2.children
     assert img_1.element_tag == 'img'
     assert img_1.position_y == 0
+
+
+@assert_no_logs
+def test_box_decoration_break_inline_slice():
+    # http://www.w3.org/TR/css3-background/#the-box-decoration-break
+    page_1, = parse('''
+      <style>
+        @font-face { src: url(AHEM____.TTF); font-family: ahem }
+        @page { size: 100px }
+        span { font-family: ahem; box-decoration-break: slice;
+               padding: 5px; border: 1px solid black }
+      </style>
+      <span>a<br/>b<br/>c</span>''')
+    html, = page_1.children
+    body, = html.children
+    line_1, line_2, line_3 = body.children
+    span, = line_1.children
+    assert span.width == 16
+    assert span.margin_width() == 16 + 5 + 1
+    text, br = span.children
+    assert text.position_x == 5 + 1
+    span, = line_2.children
+    assert span.width == 16
+    assert span.margin_width() == 16
+    text, br = span.children
+    assert text.position_x == 0
+    span, = line_3.children
+    assert span.width == 16
+    assert span.margin_width() == 16 + 5 + 1
+    text, = span.children
+    assert text.position_x == 0
+
+
+@assert_no_logs
+def test_box_decoration_break_inline_clone():
+    # http://www.w3.org/TR/css3-background/#the-box-decoration-break
+    page_1, = parse('''
+      <style>
+        @font-face { src: url(AHEM____.TTF); font-family: ahem }
+        @page { size: 100px }
+        span { font-family: ahem; box-decoration-break: clone;
+               padding: 5px; border: 1px solid black }
+      </style>
+      <span>a<br/>b<br/>c</span>''')
+    html, = page_1.children
+    body, = html.children
+    line_1, line_2, line_3 = body.children
+    span, = line_1.children
+    assert span.width == 16
+    assert span.margin_width() == 16 + 2 * (5 + 1)
+    text, br = span.children
+    assert text.position_x == 5 + 1
+    span, = line_2.children
+    assert span.width == 16
+    assert span.margin_width() == 16 + 2 * (5 + 1)
+    text, br = span.children
+    assert text.position_x == 5 + 1
+    span, = line_3.children
+    assert span.width == 16
+    assert span.margin_width() == 16 + 2 * (5 + 1)
+    text, = span.children
+    assert text.position_x == 5 + 1

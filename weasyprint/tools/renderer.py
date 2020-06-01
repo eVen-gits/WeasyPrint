@@ -5,14 +5,12 @@
     A simple web application allowing to type HTML and instantly visualize the
     result rendered by WeasyPrint.
 
-    :copyright: Copyright 2011-2014 Simon Sapin and contributors, see AUTHORS.
-    :license: BSD, see LICENSE for details.
-
 """
 
+import argparse
 from base64 import b64encode
-from cgi import parse_qs
 from io import BytesIO
+from urllib.parse import parse_qs
 from wsgiref.simple_server import make_server
 
 from weasyprint import HTML
@@ -100,12 +98,16 @@ def app(environ, start_response):
     return make_response(b'<h1>Not Found</h1>', status='404 Not Found')
 
 
-def run(port=5000):
+def run(port=5000):  # pragma: no cover
     host = '127.0.0.1'
     server = make_server(host, port, app)
     print('Listening on http://%s:%s/ ...' % (host, port))
     server.serve_forever()
 
 
-if __name__ == '__main__':
-    run()
+if __name__ == '__main__':  # pragma: no cover
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        '--port', '-p', type=int, default=5000,
+        help='renderer web server port')
+    run(parser.parse_args().port)

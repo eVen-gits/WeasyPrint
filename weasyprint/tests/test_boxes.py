@@ -4,9 +4,6 @@
 
     Test that the "before layout" box tree is correctly constructed.
 
-    :copyright: Copyright 2011-2014 Simon Sapin and contributors, see AUTHORS.
-    :license: BSD, see LICENSE for details.
-
 """
 
 import functools
@@ -15,8 +12,9 @@ import pytest
 
 from .. import images
 from ..css import PageType, get_all_computed_styles
+from ..css.counters import CounterStyle
 from ..css.targets import TargetCollector
-from ..formatting_structure import boxes, build, counters
+from ..formatting_structure import boxes, build
 from ..layout.pages import set_page_type_computed_styles
 from .testing_utils import BASE_URL, FakeHTML, assert_no_logs, capture_logs
 
@@ -52,13 +50,14 @@ def serialize(box_list):
 
 def _parse_base(html_content, base_url=BASE_URL):
     document = FakeHTML(string=html_content, base_url=base_url)
-    style_for, _, _ = get_all_computed_styles(document)
+    counter_style = CounterStyle()
+    style_for = get_all_computed_styles(document, counter_style=counter_style)
     get_image_from_uri = functools.partial(
         images.get_image_from_uri, {}, document.url_fetcher)
     target_collector = TargetCollector()
     return (
         document.etree_element, style_for, get_image_from_uri, base_url,
-        target_collector)
+        target_collector, counter_style)
 
 
 def parse(html_content):
@@ -116,7 +115,7 @@ def _sanity_checks(box):
         return
 
     acceptable_types_lists = None  # raises when iterated
-    for class_ in type(box).mro():
+    for class_ in type(box).mro():  # pragma: no cover
         if class_ in PROPER_CHILDREN:
             acceptable_types_lists = PROPER_CHILDREN[class_]
             break
@@ -385,30 +384,38 @@ def test_whitespace():
 
 @assert_no_logs
 @pytest.mark.parametrize('page_type, top, right, bottom, left', (
-    (PageType(side='left', first=True, blank=False, name=None), 20, 3, 3, 10),
-    (PageType(side='right', first=True, blank=False, name=None), 20, 10, 3, 3),
-    (PageType(side='left', first=False, blank=False, name=None), 10, 3, 3, 10),
-    (PageType(side='right', first=False, blank=False, name=None),
+    (PageType(side='left', first=True, index=0, blank=None, name=None),
+     20, 3, 3, 10),
+    (PageType(side='right', first=True, index=0, blank=None, name=None),
+     20, 10, 3, 3),
+    (PageType(side='left', first=None, index=1, blank=None, name=None),
+     10, 3, 3, 10),
+    (PageType(side='right', first=None, index=1, blank=None, name=None),
      10, 10, 3, 3),
+    (PageType(side='right', first=None, index=1, blank=None, name='name'),
+     5, 10, 3, 15),
+    (PageType(side='right', first=None, index=2, blank=None, name='name'),
+     5, 10, 1, 15),
+    (PageType(side='right', first=None, index=8, blank=None, name='name'),
+     5, 10, 2, 15),
 ))
 def test_page_style(page_type, top, right, bottom, left):
     document = FakeHTML(string='''
       <style>
         @page { margin: 3px }
+        @page name { margin-left: 15px; margin-top: 5px }
+        @page :nth(3) { margin-bottom: 1px }
+        @page :nth(5n+4) { margin-bottom: 2px }
         @page :first { margin-top: 20px }
         @page :right { margin-right: 10px; margin-top: 10px }
         @page :left { margin-left: 10px; margin-top: 10px }
       </style>
     ''')
-    style_for, cascaded_styles, computed_styles = get_all_computed_styles(
-        document)
+    style_for = get_all_computed_styles(document)
 
-    # Force the generation of the style for all possible page types as it's
-    # generally only done during the rendering for needed page types.
-    standard_page_type = PageType(
-        side=None, blank=False, first=False, name=None)
-    set_page_type_computed_styles(
-        standard_page_type, cascaded_styles, computed_styles, document)
+    # Force the generation of the style for this page type as it's generally
+    # only done during the rendering.
+    set_page_type_computed_styles(page_type, document, style_for)
 
     style = style_for(page_type)
     assert style['margin_top'] == (top, 'px')
@@ -577,7 +584,6 @@ def test_tables_5():
 
 @assert_no_logs
 def test_tables_6():
-    # TODO: re-enable this once we support inline-table
     # Rule 3.2
     assert_tree(parse_all('<span><x-tr></x-tr></span>'), [
         ('body', 'Line', [
@@ -888,383 +894,6 @@ def test_before_after_5():
 
 
 @assert_no_logs
-def test_counters_1():
-    assert_tree(parse_all('''
-      <style>
-        p { counter-increment: p 2 }
-        p:before { content: counter(p); }
-        p:nth-child(1) { counter-increment: none; }
-        p:nth-child(2) { counter-increment: p; }
-      </style>
-      <p></p>
-      <p></p>
-      <p></p>
-      <p style="counter-reset: p 117 p"></p>
-      <p></p>
-      <p></p>
-      <p style="counter-reset: p -13"></p>
-      <p></p>
-      <p></p>
-      <p style="counter-reset: p 42"></p>
-      <p></p>
-      <p></p>'''), [
-        ('p', 'Block', [
-            ('p', 'Line', [
-                ('p::before', 'Inline', [
-                    ('p::before', 'Text', counter)])])])
-        for counter in '0 1 3  2 4 6  -11 -9 -7  44 46 48'.split()])
-
-
-@assert_no_logs
-def test_counters_2():
-    assert_tree(parse_all('''
-      <ol style="list-style-position: inside">
-        <li></li>
-        <li></li>
-        <li></li>
-        <li><ol>
-          <li></li>
-          <li style="counter-increment: none"></li>
-          <li></li>
-        </ol></li>
-        <li></li>
-      </ol>'''), [
-        ('ol', 'Block', [
-            ('li', 'Block', [
-                ('li', 'Line', [
-                    ('li::marker', 'Text', '1.')])]),
-            ('li', 'Block', [
-                ('li', 'Line', [
-                    ('li::marker', 'Text', '2.')])]),
-            ('li', 'Block', [
-                ('li', 'Line', [
-                    ('li::marker', 'Text', '3.')])]),
-            ('li', 'Block', [
-                ('li', 'Block', [
-                    ('li', 'Line', [
-                        ('li::marker', 'Text', '4.')])]),
-                ('ol', 'Block', [
-                    ('li', 'Block', [
-                        ('li', 'Line', [
-                            ('li::marker', 'Text', '1.')])]),
-                    ('li', 'Block', [
-                        ('li', 'Line', [
-                            ('li::marker', 'Text', '1.')])]),
-                    ('li', 'Block', [
-                        ('li', 'Line', [
-                            ('li::marker', 'Text', '2.')])])])]),
-            ('li', 'Block', [
-                ('li', 'Line', [
-                    ('li::marker', 'Text', '5.')])])])])
-
-
-@assert_no_logs
-def test_counters_3():
-    assert_tree(parse_all('''
-      <style>
-        p { display: list-item; list-style: inside decimal }
-      </style>
-      <div>
-        <p></p>
-        <p></p>
-        <p style="counter-reset: list-item 7 list-item -56"></p>
-      </div>
-      <p></p>'''), [
-        ('div', 'Block', [
-            ('p', 'Block', [
-                ('p', 'Line', [
-                    ('p::marker', 'Text', '1.')])]),
-            ('p', 'Block', [
-                ('p', 'Line', [
-                    ('p::marker', 'Text', '2.')])]),
-            ('p', 'Block', [
-                ('p', 'Line', [
-                    ('p::marker', 'Text', '-55.')])])]),
-        ('p', 'Block', [
-            ('p', 'Line', [
-                ('p::marker', 'Text', '1.')])])])
-
-
-@assert_no_logs
-def test_counters_4():
-    assert_tree(parse_all('''
-      <style>
-        section:before { counter-reset: h; content: '' }
-        h1:before { counter-increment: h; content: counters(h, '.') }
-      </style>
-      <body>
-        <section><h1></h1>
-          <h1></h1>
-          <section><h1></h1>
-            <h1></h1>
-          </section>
-          <h1></h1>
-        </section>
-      </body>'''), [
-        ('section', 'Block', [
-            ('section', 'Block', [
-                ('section', 'Line', [
-                    ('section::before', 'Inline', [])])]),
-            ('h1', 'Block', [
-                ('h1', 'Line', [
-                    ('h1::before', 'Inline', [
-                        ('h1::before', 'Text', '1')])])]),
-            ('h1', 'Block', [
-                ('h1', 'Line', [
-                    ('h1::before', 'Inline', [
-                        ('h1::before', 'Text', '2')])])]),
-            ('section', 'Block', [
-                ('section', 'Block', [
-                    ('section', 'Line', [
-                        ('section::before', 'Inline', [])])]),
-                ('h1', 'Block', [
-                    ('h1', 'Line', [
-                        ('h1::before', 'Inline', [
-                            ('h1::before', 'Text', '2.1')])])]),
-                ('h1', 'Block', [
-                    ('h1', 'Line', [
-                        ('h1::before', 'Inline', [
-                            ('h1::before', 'Text', '2.2')])])])]),
-            ('h1', 'Block', [
-                ('h1', 'Line', [
-                    ('h1::before', 'Inline', [
-                        ('h1::before', 'Text', '3')])])])])])
-
-
-@assert_no_logs
-def test_counters_5():
-    assert_tree(parse_all('''
-      <style>
-        p:before { content: counter(c) }
-      </style>
-      <div>
-        <span style="counter-reset: c">
-          Scope created now, deleted after the div
-        </span>
-      </div>
-      <p></p>'''), [
-        ('div', 'Block', [
-            ('div', 'Line', [
-                ('span', 'Inline', [
-                    ('span', 'Text',
-                     'Scope created now, deleted after the div ')])])]),
-        ('p', 'Block', [
-            ('p', 'Line', [
-                ('p::before', 'Inline', [
-                    ('p::before', 'Text', '0')])])])])
-
-
-@assert_no_logs
-def test_counters_6():
-    # counter-increment may interfere with display: list-item
-    assert_tree(parse_all('''
-      <p style="counter-increment: c;
-                display: list-item; list-style: inside decimal">'''), [
-        ('p', 'Block', [
-            ('p', 'Line', [
-                ('p::marker', 'Text', '0.')])])])
-
-
-@assert_no_logs
-def test_counter_styles_1():
-    assert_tree(parse_all('''
-      <style>
-        body { counter-reset: p -12 }
-        p { counter-increment: p }
-        p:nth-child(1):before { content: '-' counter(p, none) '-'; }
-        p:nth-child(2):before { content: counter(p, disc); }
-        p:nth-child(3):before { content: counter(p, circle); }
-        p:nth-child(4):before { content: counter(p, square); }
-        p:nth-child(5):before { content: counter(p); }
-      </style>
-      <p></p>
-      <p></p>
-      <p></p>
-      <p></p>
-      <p></p>
-    '''), [
-        ('p', 'Block', [
-            ('p', 'Line', [
-                ('p::before', 'Inline', [
-                    ('p::before', 'Text', counter)])])])
-        for counter in '--  •  ◦  ▪  -7'.split()])
-
-
-@assert_no_logs
-def test_counter_styles_2():
-    assert_tree(parse_all('''
-      <style>
-        p { counter-increment: p }
-        p::before { content: counter(p, decimal-leading-zero); }
-      </style>
-      <p style="counter-reset: p -1987"></p>
-      <p></p>
-      <p style="counter-reset: p -12"></p>
-      <p></p>
-      <p></p>
-      <p></p>
-      <p style="counter-reset: p -2"></p>
-      <p></p>
-      <p></p>
-      <p></p>
-      <p style="counter-reset: p 8"></p>
-      <p></p>
-      <p></p>
-      <p style="counter-reset: p 98"></p>
-      <p></p>
-      <p></p>
-      <p style="counter-reset: p 4134"></p>
-      <p></p>
-    '''), [
-        ('p', 'Block', [
-            ('p', 'Line', [
-                ('p::before', 'Inline', [
-                    ('p::before', 'Text', counter)])])])
-        for counter in '''-1986 -1985  -11 -10 -09 -08  -01 00 01 02  09 10 11
-                            99 100 101  4135 4136'''.split()])
-
-
-@assert_no_logs
-def test_counter_styles_3():
-    # Same test as above, but short-circuit HTML and boxes
-    assert [counters.format(value, 'decimal-leading-zero') for value in [
-        -1986, -1985,
-        -11, -10, -9, -8,
-        -1, 0, 1, 2,
-        9, 10, 11,
-        99, 100, 101,
-        4135, 4136
-    ]] == '''
-        -1986 -1985  -11 -10 -09 -08  -01 00 01 02  09 10 11
-        99 100 101  4135 4136
-    '''.split()
-
-
-@assert_no_logs
-def test_counter_styles_4():
-    # Now that we’re confident that they do the same, use the shorter form.
-
-    # http://test.csswg.org/suites/css2.1/20110323/html4/content-counter-007.htm
-    assert [counters.format(value, 'lower-roman') for value in [
-        -1986, -1985,
-        -1, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12,
-        49, 50,
-        389, 390,
-        3489, 3490, 3491,
-        4999, 5000, 5001
-    ]] == '''
-        -1986 -1985  -1 0 i ii iii iv v vi vii viii ix x xi xii
-        xlix l  ccclxxxix cccxc  mmmcdlxxxix mmmcdxc mmmcdxci
-        mmmmcmxcix  5000 5001
-    '''.split()
-
-
-@assert_no_logs
-def test_counter_styles_5():
-    # http://test.csswg.org/suites/css2.1/20110323/html4/content-counter-008.htm
-    assert [counters.format(value, 'upper-roman') for value in [
-        -1986, -1985,
-        -1, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12,
-        49, 50,
-        389, 390,
-        3489, 3490, 3491,
-        4999, 5000, 5001
-    ]] == '''
-        -1986 -1985  -1 0 I II III IV V VI VII VIII IX X XI XII
-        XLIX L  CCCLXXXIX CCCXC  MMMCDLXXXIX MMMCDXC MMMCDXCI
-        MMMMCMXCIX 5000 5001
-    '''.split()
-
-
-@assert_no_logs
-def test_counter_styles_6():
-    assert [counters.format(value, 'lower-alpha') for value in [
-        -1986, -1985,
-        -1, 0, 1, 2, 3, 4,
-        25, 26, 27, 28, 29,
-        2002, 2003
-    ]] == '''
-        -1986 -1985  -1 0 a b c d  y z aa ab ac bxz bya
-    '''.split()
-
-
-@assert_no_logs
-def test_counter_styles_7():
-    assert [counters.format(value, 'upper-alpha') for value in [
-        -1986, -1985,
-        -1, 0, 1, 2, 3, 4,
-        25, 26, 27, 28, 29,
-        2002, 2003
-    ]] == '''
-        -1986 -1985  -1 0 A B C D  Y Z AA AB AC BXZ BYA
-    '''.split()
-
-
-@assert_no_logs
-def test_counter_styles_8():
-    assert [counters.format(value, 'lower-latin') for value in [
-        -1986, -1985,
-        -1, 0, 1, 2, 3, 4,
-        25, 26, 27, 28, 29,
-        2002, 2003
-    ]] == '''
-        -1986 -1985  -1 0 a b c d  y z aa ab ac bxz bya
-    '''.split()
-
-
-@assert_no_logs
-def test_counter_styles_9():
-    assert [counters.format(value, 'upper-latin') for value in [
-        -1986, -1985,
-        -1, 0, 1, 2, 3, 4,
-        25, 26, 27, 28, 29,
-        2002, 2003
-    ]] == '''
-        -1986 -1985  -1 0 A B C D  Y Z AA AB AC BXZ BYA
-    '''.split()
-
-
-@assert_no_logs
-def test_counter_styles_10():
-    # http://test.csswg.org/suites/css2.1/20110323/html4/content-counter-009.htm
-    assert [counters.format(value, 'georgian') for value in [
-        -1986, -1985,
-        -1, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12,
-        20, 30, 40, 50, 60, 70, 80, 90, 100,
-        200, 300, 400, 500, 600, 700, 800, 900, 1000,
-        2000, 3000, 4000, 5000, 6000, 7000, 8000, 9000, 10000,
-        19999, 20000, 20001
-    ]] == '''
-        -1986 -1985  -1 0 ა
-        ბ გ დ ე ვ ზ ჱ თ ი ია იბ
-        კ ლ მ ნ ჲ ო პ ჟ რ
-        ს ტ ჳ ფ ქ ღ ყ შ ჩ
-        ც ძ წ ჭ ხ ჴ ჯ ჰ ჵ
-        ჵჰშჟთ 20000 20001
-    '''.split()
-
-
-@assert_no_logs
-def test_counter_styles_11():
-    # http://test.csswg.org/suites/css2.1/20110323/html4/content-counter-010.htm
-    assert [counters.format(value, 'armenian') for value in [
-        -1986, -1985,
-        -1, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12,
-        20, 30, 40, 50, 60, 70, 80, 90, 100,
-        200, 300, 400, 500, 600, 700, 800, 900, 1000,
-        2000, 3000, 4000, 5000, 6000, 7000, 8000, 9000,
-        9999, 10000, 10001
-    ]] == '''
-        -1986 -1985  -1 0 Ա
-        Բ Գ Դ Ե Զ Է Ը Թ Ժ ԺԱ ԺԲ
-        Ի Լ Խ Ծ Կ Հ Ձ Ղ Ճ
-        Մ Յ Ն Շ Ո Չ Պ Ջ Ռ
-        Ս Վ Տ Ր Ց Ւ Փ Ք
-        ՔՋՂԹ 10000 10001
-    '''.split()
-
-
-@assert_no_logs
 def test_margin_boxes():
     page_1, page_2 = render_pages('''
       <style>
@@ -1473,6 +1102,85 @@ def test_margin_box_string_set_6():
     assert bottom_text_box.text == 'before!last-secondclass2|1/I'
 
 
+def test_margin_box_string_set_7():
+    # Test regression: https://github.com/Kozea/WeasyPrint/issues/722
+    page_1, = render_pages('''
+      <style>
+        img { string-set: left attr(alt) }
+        img + img { string-set: right attr(alt) }
+        @page { @top-left  { content: '[' string(left)  ']' }
+                @top-right { content: '{' string(right) '}' } }
+      </style>
+      <img src=pattern.png alt="Chocolate">
+      <img src=no_such_file.png alt="Cake">
+    ''')
+
+    html, top_left, top_right = page_1.children
+    left_line_box, = top_left.children
+    left_text_box, = left_line_box.children
+    assert left_text_box.text == '[Chocolate]'
+    right_line_box, = top_right.children
+    right_text_box, = right_line_box.children
+    assert right_text_box.text == '{Cake}'
+
+
+@assert_no_logs
+def test_margin_box_string_set_8():
+    # Test regression: https://github.com/Kozea/WeasyPrint/issues/726
+    page_1, page_2, page_3 = render_pages('''
+      <style>
+        @page { @top-left  { content: '[' string(left) ']' } }
+        p { page-break-before: always }
+        .initial { string-set: left 'initial' }
+        .empty   { string-set: left ''        }
+        .space   { string-set: left ' '       }
+      </style>
+
+      <p class="initial">Initial</p>
+      <p class="empty">Empty</p>
+      <p class="space">Space</p>
+    ''')
+    html, top_left = page_1.children
+    left_line_box, = top_left.children
+    left_text_box, = left_line_box.children
+    assert left_text_box.text == '[initial]'
+
+    html, top_left = page_2.children
+    left_line_box, = top_left.children
+    left_text_box, = left_line_box.children
+    assert left_text_box.text == '[]'
+
+    html, top_left = page_3.children
+    left_line_box, = top_left.children
+    left_text_box, = left_line_box.children
+    assert left_text_box.text == '[ ]'
+
+
+@assert_no_logs
+def test_margin_box_string_set_9():
+    # Test that named strings are case-sensitive
+    # See https://github.com/Kozea/WeasyPrint/pull/827
+    page_1, = render_pages('''
+      <style>
+        @page {
+          @top-center {
+            content: string(text_header, first)
+                     ' ' string(TEXT_header, first)
+          }
+        }
+        p { string-set: text_header content() }
+        div { string-set: TEXT_header content() }
+      </style>
+      <p>first assignment</p>
+      <div>second assignment</div>
+    ''')
+
+    html, top_center = page_1.children
+    line_box, = top_center.children
+    text_box, = line_box.children
+    assert text_box.text == 'first assignment second assignment'
+
+
 @assert_no_logs
 def test_page_counters():
     """Test page-based counters."""
@@ -1611,3 +1319,16 @@ def test_border_collapse_5():
         [None, black_3, black_3],
         [black_3, black_3, black_3],
     ]
+
+
+@assert_no_logs
+@pytest.mark.parametrize('html', (
+    '<html style="display: none">',
+    '<html style="display: none">abc',
+    '<html style="display: none"><p>abc',
+    '<body style="display: none"><p>abc',
+))
+def test_display_none_root(html):
+    box = parse_all(html)
+    assert box.style['display'] == 'block'
+    assert not box.children

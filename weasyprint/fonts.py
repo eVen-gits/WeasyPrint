@@ -4,12 +4,10 @@
 
     Interface with external libraries managing fonts installed on the system.
 
-    :copyright: Copyright 2011-2016 Simon Sapin and contributors, see AUTHORS.
-    :license: BSD, see LICENSE for details.
-
 """
 
 import os
+import pathlib
 import sys
 import tempfile
 import warnings
@@ -17,17 +15,19 @@ import warnings
 from .logger import LOGGER
 from .text import (
     cairo, dlopen, ffi, get_font_features, gobject, pango, pangocairo)
-from .urls import fetch
+from .urls import FILESYSTEM_ENCODING, fetch
 
 # Cairo crashes with font-size: 0 when using Win32 API
 # See https://github.com/Kozea/WeasyPrint/pull/599
+# Probably it will crash on macOS, too, when native font rendering is used,
 # Set to True on startup when fontconfig is inoperable.
 # Used by text/Layout() to mask font-size: 0 with a font_size of 1.
+# TODO: Should we set it to true on Windows and macOS if Pango < 13800?
 ZERO_FONTSIZE_CRASHES_CAIRO = False
 
 
 class FontConfiguration:
-    """Font configuration"""
+    """Font configuration."""
 
     def __init__(self):
         """Create a font configuration before rendering a document."""
@@ -49,7 +49,7 @@ else:
                         'libfontconfig-1.dll',
                         'libfontconfig.so.1', 'libfontconfig-1.dylib')
     pangoft2 = dlopen(ffi, 'pangoft2-1.0', 'libpangoft2-1.0-0',
-                      'libpangoft2-1.0.so', 'libpangoft2-1.0.dylib')
+                      'libpangoft2-1.0.so.0', 'libpangoft2-1.0.dylib')
 
     ffi.cdef('''
         // FontConfig
@@ -161,49 +161,98 @@ else:
     def _check_font_configuration(font_config, warn=False):
         """Check whether the given font_config has fonts.
 
-        The default fontconfig configuration file may be missing, particularly
-        on Windows, giving "Fontconfig error: Cannot load default config file".
+        The default fontconfig configuration file may be missing (particularly
+        on Windows or macOS, where installation of fontconfig isn't as
+        standardized as on Linux), resulting in "Fontconfig error: Cannot load
+        default config file".
 
-        No default config == No fonts.
-        No fonts == expect ugly output.
-        If you happen to have an html without a valid @font-face all
-        letters turn into rectangles.
-        If you happen to have an html with at least one valid @font-face
-        all text is styled with that font.
+        Fontconfig tries to retrieve the system fonts as fallback, which may or
+        may not work, especially on macOS, where fonts can be installed at
+        various loactions. On Windows (at least since fontconfig 2.13) the
+        fallback seems to work.
+
+        If there’s no default configuration and the system fonts fallback
+        fails, or if the configuration file exists but doesn’t provide fonts,
+        output will be ugly.
+
+        If you happen to have no fonts and an HTML document without a valid
+        @font-face, all letters turn into rectangles.
+
+        If you happen to have an HTML document with at least one valid
+        @font-face, all text is styled with that font.
+
+        On Windows and macOS we can cause Pango to use native font rendering
+        instead of rendering fonts with FreeType. But then we must do without
+        @font-face. Expect other missing features and ugly output.
 
         """
-        # Nobody ever complained about such a situation on Unix-like OSes.
-        if not sys.platform.startswith('win'):
+
+        # On Linux we can do nothing but give warnings.
+        has_native_mode = (
+            sys.platform.startswith('win') or
+            sys.platform.startswith('darwin'))
+        if not has_native_mode and not warn:
             return True
 
+        # Having fonts means: fontconfig's config file returns fonts or
+        # fontconfig managed to retrieve system fallback-fonts. On Windows the
+        # fallback stragegy seems to work since fontconfig >= 2.13
         fonts = fontconfig.FcConfigGetFonts(
             font_config, fontconfig.FcSetSystem)
+        # Of course, with nfont == 1 the user wont be happy, too…
         if fonts.nfont > 0:
             return True
 
-        if warn:
-            config_files = fontconfig.FcConfigGetConfigFiles(font_config)
-            config_file = fontconfig.FcStrListNext(config_files)
-            if config_file == ffi.NULL:
-                warnings.warn(
-                    '@font-face not supported: '
-                    'Cannot load default config file')
+        # Find the reason why we have no fonts
+        config_files = fontconfig.FcConfigGetConfigFiles(font_config)
+        config_file = fontconfig.FcStrListNext(config_files)
+        if config_file == ffi.NULL:
+            # No config file, no system fonts found. On Windows and macOS it
+            # might help to fall back to native font rendering.
+            if has_native_mode:
+                if warn:
+                    warnings.warn(
+                        '@font-face not supported: '
+                        'FontConfig cannot load default config file')
+                return False
             else:
-                warnings.warn('@font-face not supported: no fonts configured')
+                if warn:
+                    warnings.warn(
+                        'FontConfig cannot load default config file.'
+                        'Expect ugly output.')
+                return True
+        else:
+            # Useless config file, or indeed no fonts.
+            if warn:
+                warnings.warn(
+                    'FontConfig: No fonts configured. '
+                    'Expect ugly output.')
+            return True
 
         # TODO: on Windows we could try to add the system fonts like that:
         # fontdir = os.path.join(os.environ['WINDIR'], 'Fonts')
         # fontconfig.FcConfigAppFontAddDir(
         #     font_config,
-        #     # not shure which encoding fontconfig expects
+        #     # not sure which encoding fontconfig expects
         #     fontdir.encode('mbcs'))
 
-        # Fall back to default @font-face-less behaviour.
-        return False
-
     class FontConfiguration(FontConfiguration):
+        """A FreeType font configuration.
+
+        .. versionadded:: 0.32
+
+        Keep a list of fonts, including fonts installed on the system, fonts
+        installed for the current user, and fonts referenced by cascading
+        stylesheets.
+
+        When created, an instance of this class gathers available fonts. It can
+        then be given to :class:`weasyprint.HTML` methods or to
+        :class:`weasyprint.CSS` to find fonts in ``@font-face`` rules.
+
+        """
+
         def __init__(self):
-            """Create a FT2 font configuration.
+            """Create a FreeType font configuration.
 
             See Behdad's blog:
             https://mces.blogspot.fr/2015/05/
@@ -226,6 +275,7 @@ else:
                 fontconfig.FcConfigDestroy(self._fontconfig_config)
             else:
                 self.font_map = None
+
             # On Windows the font tempfiles cannot be deleted,
             # putting them in a subfolder made my life easier.
             self._tempdir = None
@@ -269,7 +319,7 @@ else:
                             config, pattern, result)
                         # prevent RuntimeError, see issue #677
                         if matching_pattern == ffi.NULL:
-                            LOGGER.warning(
+                            LOGGER.debug(
                                 'Failed to get matching local font for "%s"',
                                 font_name.decode('utf-8'))
                             continue
@@ -284,23 +334,13 @@ else:
                         if font_name.lower() in (
                                 family.lower(), postscript.lower()):
                             filename = ffi.new('FcChar8 **')
-                            matching_pattern = fontconfig.FcFontMatch(
-                                config, pattern, result)
                             fontconfig.FcPatternGetString(
                                 matching_pattern, b'file', 0, filename)
-                            # Can't use urlopen('file://...') on Windows.
-                            # Fails with
-                            # URLError: <urlopen error file on local host>
-                            if sys.platform.startswith('win'):
-                                fetch_as_url = False
-                                url = ffi.string(filename[0]).decode(
-                                    sys.getfilesystemencoding())
-                            else:
-                                url = (
-                                    'file://' +
-                                    ffi.string(filename[0]).decode('utf-8'))
+                            path = ffi.string(filename[0]).decode(
+                                FILESYSTEM_ENCODING)
+                            url = pathlib.Path(path).as_uri()
                         else:
-                            LOGGER.warning(
+                            LOGGER.debug(
                                 'Failed to load local font "%s"',
                                 font_name.decode('utf-8'))
                             continue
@@ -315,7 +355,7 @@ else:
                             with open(url, 'rb') as fd:
                                 font = fd.read()
                     except Exception as exc:
-                        LOGGER.error(
+                        LOGGER.debug(
                             'Failed to load font at "%s" (%s)', url, exc)
                         continue
                     font_features = {
@@ -329,10 +369,12 @@ else:
                             **font_features).items():
                         features_string += '<string>%s %s</string>' % (
                             key, value)
-                    fd, filename = tempfile.mkstemp(dir=self._tempdir)
-                    os.write(fd, font)
-                    os.close(fd)
-                    self._filenames.append(filename)
+                    fd = tempfile.NamedTemporaryFile(
+                        'wb', dir=self._tempdir, delete=False)
+                    font_filename = fd.name
+                    fd.write(font)
+                    fd.close()
+                    self._filenames.append(font_filename)
                     xml = '''<?xml version="1.0"?>
                     <!DOCTYPE fontconfig SYSTEM "fonts.dtd">
                     <fontconfig>
@@ -361,7 +403,7 @@ else:
                               mode="assign_replace">%s</edit>
                       </match>
                     </fontconfig>''' % (
-                        filename,
+                        font_filename,
                         rule_descriptors['font_family'],
                         FONTCONFIG_STYLE_CONSTANTS[
                             rule_descriptors.get('font_style', 'normal')],
@@ -369,25 +411,26 @@ else:
                             rule_descriptors.get('font_weight', 'normal')],
                         FONTCONFIG_STRETCH_CONSTANTS[
                             rule_descriptors.get('font_stretch', 'normal')],
-                        filename, features_string)
-                    fd, conf_filename = tempfile.mkstemp(dir=self._tempdir)
-                    # TODO: is this encoding OK?
-                    os.write(fd, xml.encode('utf-8'))
-                    os.close(fd)
-                    self._filenames.append(conf_filename)
+                        font_filename, features_string)
+                    fd = tempfile.NamedTemporaryFile(
+                        'w', dir=self._tempdir, delete=False)
+                    fd.write(xml)
+                    fd.close()
+                    self._filenames.append(fd.name)
                     fontconfig.FcConfigParseAndLoad(
-                        config, conf_filename.encode('ascii'), True)
+                        config, fd.name.encode(FILESYSTEM_ENCODING),
+                        True)
                     font_added = fontconfig.FcConfigAppFontAddFile(
-                        config, filename.encode('ascii'))
+                        config, font_filename.encode(FILESYSTEM_ENCODING))
                     if font_added:
                         # TODO: We should mask local fonts with the same name
                         # too as explained in Behdad's blog entry.
                         # TODO: What about pango_fc_font_map_config_changed()
                         # as suggested in Behdad's blog entry?
-                        # Though it seems to work without...
-                        return filename
+                        # Though it seems to work without…
+                        return font_filename
                     else:
-                        LOGGER.error('Failed to load font at "%s"', url)
+                        LOGGER.debug('Failed to load font at "%s"', url)
             LOGGER.warning(
                 'Font-face "%s" cannot be loaded',
                 rule_descriptors['font_family'])

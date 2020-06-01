@@ -2,9 +2,6 @@
     weasyprint.stacking
     -------------------
 
-    :copyright: Copyright 2011-2014 Simon Sapin and contributors, see AUTHORS.
-    :license: BSD, see LICENSE for details.
-
 """
 
 import operator
@@ -15,7 +12,7 @@ from .layout.absolute import AbsolutePlaceholder
 _Z_INDEX_GETTER = operator.attrgetter('z_index')
 
 
-class StackingContext(object):
+class StackingContext:
     """Stacking contexts define the paint order of all pieces of a document.
 
     http://www.w3.org/TR/CSS21/visuren.html#x43

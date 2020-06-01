@@ -4,74 +4,95 @@
 
     Test how images are drawn.
 
-    :copyright: Copyright 2011-2018 Simon Sapin and contributors, see AUTHORS.
-    :license: BSD, see LICENSE for details.
-
 """
 
 import pytest
 
-from . import B, _, a, assert_pixels, assert_same_rendering, r
 from ..testing_utils import assert_no_logs, capture_logs
+from . import assert_pixels, assert_same_rendering
 
-centered_image = [
-    _ + _ + _ + _ + _ + _ + _ + _,
-    _ + _ + _ + _ + _ + _ + _ + _,
-    _ + _ + r + B + B + B + _ + _,
-    _ + _ + B + B + B + B + _ + _,
-    _ + _ + B + B + B + B + _ + _,
-    _ + _ + B + B + B + B + _ + _,
-    _ + _ + _ + _ + _ + _ + _ + _,
-    _ + _ + _ + _ + _ + _ + _ + _,
-]
-blue_image = [
-    _ + _ + _ + _ + _ + _ + _ + _,
-    _ + _ + _ + _ + _ + _ + _ + _,
-    _ + _ + a + a + a + a + _ + _,
-    _ + _ + a + a + a + a + _ + _,
-    _ + _ + a + a + a + a + _ + _,
-    _ + _ + a + a + a + a + _ + _,
-    _ + _ + _ + _ + _ + _ + _ + _,
-    _ + _ + _ + _ + _ + _ + _ + _,
-]
-no_image = [
-    _ + _ + _ + _ + _ + _ + _ + _,
-    _ + _ + _ + _ + _ + _ + _ + _,
-    _ + _ + _ + _ + _ + _ + _ + _,
-    _ + _ + _ + _ + _ + _ + _ + _,
-    _ + _ + _ + _ + _ + _ + _ + _,
-    _ + _ + _ + _ + _ + _ + _ + _,
-    _ + _ + _ + _ + _ + _ + _ + _,
-    _ + _ + _ + _ + _ + _ + _ + _,
-]
-page_break = [
-    _ + _ + _ + _ + _ + _ + _ + _,
-    _ + _ + _ + _ + _ + _ + _ + _,
-    _ + _ + r + B + B + B + _ + _,
-    _ + _ + B + B + B + B + _ + _,
-    _ + _ + B + B + B + B + _ + _,
-    _ + _ + B + B + B + B + _ + _,
-    _ + _ + _ + _ + _ + _ + _ + _,
-    _ + _ + _ + _ + _ + _ + _ + _,
+centered_image = '''
+    ________
+    ________
+    __rBBB__
+    __BBBB__
+    __BBBB__
+    __BBBB__
+    ________
+    ________
+'''
 
-    _ + _ + _ + _ + _ + _ + _ + _,
-    _ + _ + _ + _ + _ + _ + _ + _,
-    _ + _ + _ + _ + _ + _ + _ + _,
-    _ + _ + _ + _ + _ + _ + _ + _,
-    _ + _ + _ + _ + _ + _ + _ + _,
-    _ + _ + _ + _ + _ + _ + _ + _,
-    _ + _ + _ + _ + _ + _ + _ + _,
-    _ + _ + _ + _ + _ + _ + _ + _,
+blue_image = '''
+    ________
+    ________
+    __aaaa__
+    __aaaa__
+    __aaaa__
+    __aaaa__
+    ________
+    ________
+'''
 
-    _ + _ + _ + _ + _ + _ + _ + _,
-    _ + _ + _ + _ + _ + _ + _ + _,
-    _ + _ + r + B + B + B + _ + _,
-    _ + _ + B + B + B + B + _ + _,
-    _ + _ + B + B + B + B + _ + _,
-    _ + _ + B + B + B + B + _ + _,
-    _ + _ + _ + _ + _ + _ + _ + _,
-    _ + _ + _ + _ + _ + _ + _ + _,
-]
+no_image = '''
+    ________
+    ________
+    ________
+    ________
+    ________
+    ________
+    ________
+    ________
+'''
+
+page_break = '''
+    ________
+    ________
+    __rBBB__
+    __BBBB__
+    __BBBB__
+    __BBBB__
+    ________
+    ________
+
+    ________
+    ________
+    ________
+    ________
+    ________
+    ________
+    ________
+    ________
+
+    ________
+    ________
+    __rBBB__
+    __BBBB__
+    __BBBB__
+    __BBBB__
+    ________
+    ________
+'''
+
+
+table = '''
+    ________
+    ________
+    __rBBB__
+    __BBBB__
+    __BBBB__
+    __BBBB__
+    ________
+    ________
+
+    __rBBB__
+    __BBBB__
+    __BBBB__
+    __BBBB__
+    ________
+    ________
+    ________
+    ________
+'''
 
 
 @assert_no_logs
@@ -199,6 +220,52 @@ def test_images_page_break():
 
 
 @assert_no_logs
+def test_image_repeat_inline():
+    # Test regression: https://github.com/Kozea/WeasyPrint/issues/808
+    assert_pixels('image_page_repeat_inline', 8, 2 * 8, table, '''
+      <style>
+        @page { size: 8px; margin: 0; background: #fff }
+        table { border-collapse: collapse; margin: 2px }
+        th, td { border: none; padding: 0 }
+        th { height: 4px; line-height: 4px }
+        td { height: 2px }
+        img { vertical-align: top }
+      </style>
+      <table>
+        <thead>
+          <tr><th><img src="pattern.png"></th></tr>
+        </thead>
+        <tbody>
+          <tr><td></td></tr>
+          <tr><td></td></tr>
+        </tbody>
+      </table>''')
+
+
+@assert_no_logs
+def test_image_repeat_block():
+    # Test regression: https://github.com/Kozea/WeasyPrint/issues/808
+    assert_pixels('image_page_repeat_block', 8, 2 * 8, table, '''
+      <style>
+        @page { size: 8px; margin: 0; background: #fff }
+        table { border-collapse: collapse; margin: 2px }
+        th, td { border: none; padding: 0 }
+        th { height: 4px }
+        td { height: 2px }
+        img { display: block }
+      </style>
+      <table>
+        <thead>
+          <tr><th><img src="pattern.png"></th></tr>
+        </thead>
+        <tbody>
+          <tr><td></td></tr>
+          <tr><td></td></tr>
+        </tbody>
+      </table>''')
+
+
+@assert_no_logs
 def test_images_padding():
     # Regression test: padding used to be ignored on images
     assert_pixels('image_with_padding', 8, 8, centered_image, '''
@@ -229,20 +296,20 @@ def test_images_shared_pattern():
     # The same image is used in a repeating background,
     # then in a non-repating <img>.
     # If Pattern objects are shared carelessly, the image will be repeated.
-    assert_pixels('image_shared_pattern', 12, 12, [
-        _ + _ + _ + _ + _ + _ + _ + _ + _ + _ + _ + _,
-        _ + _ + _ + _ + _ + _ + _ + _ + _ + _ + _ + _,
-        _ + _ + a + a + a + a + a + a + a + a + _ + _,
-        _ + _ + a + a + a + a + a + a + a + a + _ + _,
-        _ + _ + _ + _ + _ + _ + _ + _ + _ + _ + _ + _,
-        _ + _ + a + a + a + a + _ + _ + _ + _ + _ + _,
-        _ + _ + a + a + a + a + _ + _ + _ + _ + _ + _,
-        _ + _ + a + a + a + a + _ + _ + _ + _ + _ + _,
-        _ + _ + a + a + a + a + _ + _ + _ + _ + _ + _,
-        _ + _ + _ + _ + _ + _ + _ + _ + _ + _ + _ + _,
-        _ + _ + _ + _ + _ + _ + _ + _ + _ + _ + _ + _,
-        _ + _ + _ + _ + _ + _ + _ + _ + _ + _ + _ + _,
-    ], '''
+    assert_pixels('image_shared_pattern', 12, 12, '''
+        ____________
+        ____________
+        __aaaaaaaa__
+        __aaaaaaaa__
+        ____________
+        __aaaa______
+        __aaaa______
+        __aaaa______
+        __aaaa______
+        ____________
+        ____________
+        ____________
+    ''', '''
       <style>
         @page { size: 12px }
         body { margin: 2px; background: #fff; font-size: 0 }

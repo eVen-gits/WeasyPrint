@@ -81,17 +81,22 @@ Fonts
 WeasyPrint can use any font that Pango can find installed on the system. Fonts
 are automatically embedded in PDF files.
 
-On Windows and macOS, Pango uses the native font-managing libraries. You can
-use the tools provided by your OS to know which fonts are available. WeasyPrint
-should support any font format that's supported by the operating system.
-
 On Linux, Pango uses fontconfig to access fonts. You can list the available
 fonts thanks to the ``fc-list`` command, and know which font is matched by a
 given pattern thanks to ``fc-match``. Copying a font file into the
 ``~/.local/share/fonts`` or ``~/.fonts`` directory is generally enough to
 install a new font. WeasyPrint should support `any font format handled by
-FreeType <https://en.wikipedia.org/wiki/FreeType#File_formats>`_ (any format
-widely used except WOFF2).
+FreeType <https://en.wikipedia.org/wiki/FreeType#File_formats>`_.
+
+On Windows and macOS, **Pango >= 1.38** is required to use fontconfig and
+FreeType like it does on Linux. Both, ``fc-list`` and ``fc-match`` probably
+will be present, too. Installing new fonts on your system as usual should make
+them available to Pango.
+
+Otherwise (Pango < 1.38) on Windows and macOS, the native font-managing
+libraries are used.  You must then use the tools provided by your OS to know
+which fonts are available.  WeasyPrint should support any font format that’s
+supported by the operating system.
 
 
 CSS
@@ -173,7 +178,7 @@ New properties defined in Level 3 are supported:
 
 - the ``overflow-wrap`` property replacing ``word-wrap``;
 - the ``full-width`` value of the ``text-transform`` property; and
-- the ``tab-space`` property.
+- the ``tab-size`` property.
 
 Experimental_ properties controling hyphenation_ are supported by WeasyPrint:
 
@@ -218,8 +223,10 @@ supported:
 - the ``text-space-collapse`` and ``text-space-trim`` properties;
 - the ``text-wrap``, ``wrap-before``, ``wrap-after`` and ``wrap-inside``
   properties;
+- the ``text-align`` property with an alignment character;
 - the ``pre-wrap-auto`` value of the ``white-space`` property; and
 - the ``text-spacing`` property.
+
 
 .. _CSS Text Module Level 3: https://www.w3.org/TR/css-text-3/
 .. _CSS Text Module Level 4: https://www.w3.org/TR/css-text-4/
@@ -251,8 +258,7 @@ but that should not be a problem for common use.
 
 The shorthand ``font`` and ``font-variant`` properties are supported.
 
-WeasyPrint supports the ``@font-face`` rule on Linux and macOS, but does
-**not** support it on Windows.
+WeasyPrint supports the ``@font-face`` rule, provided that Pango >= 1.38 is installed.
 
 WeasyPrint does **not** support the ``@font-feature-values`` rule and the
 values of ``font-variant-alternates`` other than ``normal`` and
@@ -281,14 +287,12 @@ All the features of this draft are available, including:
 - the ``@page`` rule and the ``:left``, ``:right``, ``:first`` and ``:blank``
   selectors;
 - the page margin boxes;
-- the page-based counters (with known bugs `#91`_, `#93`_, `#289`_);
+- the page-based counters (with known limitations  `#93`_);
 - the page ``size``, ``bleed`` and ``marks`` properties;
 - the named pages.
 
 .. _CSS Paged Media Module Level 3: http://dev.w3.org/csswg/css3-page/
-.. _#91: https://github.com/Kozea/WeasyPrint/issues/91
 .. _#93: https://github.com/Kozea/WeasyPrint/issues/93
-.. _#289: https://github.com/Kozea/WeasyPrint/issues/289
 
 
 CSS Generated Content for Paged Media Module
@@ -296,15 +300,71 @@ CSS Generated Content for Paged Media Module
 
 The `CSS Generated Content for Paged Media Module`_ (GCPM) is a working draft
 defining "new properties and values, so that authors may bring new techniques
-(running headers and footers, footnotes, leaders, bookmarks) to paged media".
+(running headers and footers, footnotes, page selection) to paged media".
 
-Two features from this module have been implemented in WeasyPrint.
+`Page selectors`_ are supported by WeasyPrint. You can select pages according
+to their position in the document:
+
+.. code-block:: css
+
+    @page :nth(3) { background: red } /* Third page */
+    @page :nth(2n+1) { background: green } /* Odd pages */
+
+You can also use `running elements`_ to put HTML boxes into the page margins
+(but the ``start`` parameter of ``element()`` is not supported).
+
+The other features of GCPM are **not** implemented:
+
+- footnotes (``float: footnote``, ``footnote-display``, ``footnote`` counter,
+  ``::footnote-call``, ``::footnote-marker``, ``@footnote`` rule,
+  ``footnote-policy``);
+- page groups (``:nth(X of pagename)`` pseudo-class).
+
+.. _CSS Generated Content for Paged Media Module: http://www.w3.org/TR/css-gcpm-3/
+.. _Page selectors: https://www.w3.org/TR/css-gcpm-3/#document-page-selectors
+.. _running elements: https://www.w3.org/TR/css-gcpm-3/#running-elements
+
+
+CSS Generated Content Module Level 3
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The `CSS Generated Content Module Level 3`_ is a working draft helping "authors
+[who] sometimes want user agents to render content that does not come from the
+document tree. One familiar example of this is numbered headings
+[…]. Similarly, authors may want the user agent to insert the word "Figure"
+before the caption of a figure […], or replacing elements with images or other
+multimedia content."
+
+`Named strings`_ are supported by WeasyPrint. You can define strings related to
+the first or last element of a type present on a page, and display these
+strings in page borders. This feature is really useful to add the title of the
+current chapter at the top of the pages of a book for example.
+
+The named strings can embed static strings, counters, cross-references, tag
+contents and tag attributes.
+
+.. code-block:: css
+
+    @top-center { content: string(chapter) }
+    h2 { string-set: chapter "Current chapter: " content() }
+
+`Cross-references`_ retrieve counter or content values from targets (anchors or
+identifiers) in the current document:
+
+.. code-block:: css
+
+    a::after { content: ", on page " target-counter(attr(href), page) }
+    a::after { content: ", see " target-text(attr(href)) }
+
+In particular, ``target-counter()`` and ``target-text()`` are useful when it
+comes to tables of contents (see `an example
+<https://github.com/Kozea/WeasyPrint/pull/652#issuecomment-403276559>`_).
 
 .. _bookmarks:
 
-The first feature is `PDF bookmarks`_.  Using the experimental_
-``bookmark-level`` and ``bookmark-level`` properties, you can add
-bookmarks that will be available in your PDF reader.
+You can also control `PDF bookmarks`_ with WeasyPrint. Using the experimental_
+``bookmark-level``, ``bookmark-label`` and ``bookmark-state`` properties, you
+can add bookmarks that will be available in your PDF reader.
 
 Bookmarks have already been added in the WeasyPrint's `user agent stylesheet`_,
 so your generated documents will automatically have bookmarks on headers (from
@@ -315,34 +375,16 @@ and do not wish to include it in the bookmarks, add this in your stylesheet:
 
     h1 { bookmark-level: none }
 
-The second feature is `Named strings`_. You can define strings related to the
-first or last element of a type present on a page, and display these strings in
-page borders. This feature is really useful to add the title of the current
-chapter at the top of the pages of a book for example.
+The other features of this module are **not** implemented:
 
-The named strings can embed static strings, counters, tag contents and tag
-attributes.
+- quotes (``content: *-quote``);
+- leaders (``content: leader()``).
 
-.. code-block:: css
-
-    @top-center { content: string(chapter); }
-    h2 { string-set: chapter "Current chapter: " content() }
-
-The other features of GCPM are **not** implemented:
-
-- running elements (``running()`` and ``element()``);
-- footnotes (``float: footnote``, ``footnote-display``, ``footnote`` counter,
-  ``::footnote-call``, ``::footnote-marker``, ``@footnote`` rule,
-  ``footnote-policy``);
-- page selectors and page groups (``:nth()`` pseudo-class);
-- leaders (``content: leader()``);
-- cross-references (``target-counter()``, ``target-counters()`` and
-  ``target-text()``);
-- bookmark states (``bookmark-state``).
-
-.. _CSS Generated Content for Paged Media Module: http://www.w3.org/TR/css-gcpm-3/
-.. _PDF bookmarks: http://www.w3.org/TR/css-gcpm-3/#bookmarks
-.. _Named strings: http://www.w3.org/TR/css-gcpm-3/#named-strings
+.. _CSS Generated Content Module Level 3: http://www.w3.org/TR/css-content-3/
+.. _Quotes: https://www.w3.org/TR/css-content-3/#quotes
+.. _Named strings: https://www.w3.org/TR/css-content-3/#named-strings
+.. _Cross-references: https://www.w3.org/TR/css-content-3/#cross-references
+.. _PDF bookmarks: https://www.w3.org/TR/css-content-3/#bookmark-generation
 .. _experimental: http://www.w3.org/TR/css-2010/#experimental
 .. _user agent stylesheet: https://github.com/Kozea/WeasyPrint/blob/master/weasyprint/css/html5_ua.css
 
@@ -350,14 +392,14 @@ The other features of GCPM are **not** implemented:
 CSS Color Module Level 3
 ~~~~~~~~~~~~~~~~~~~~~~~~
 
-The `CSS Color Module Level 3`_ is a recommandation defining "CSS properties
+The `CSS Color Module Level 3`_ is a recommendation defining "CSS properties
 which allow authors to specify the foreground color and opacity of an
 element". Its main goal is to specify how colors are defined, including color
 keywords and the ``#rgb``, ``#rrggbb``, ``rgb()``, ``rgba()``, ``hsl()``,
 ``hsla()`` syntaxes. Opacity and alpha compositing are also defined in this
 document.
 
-This recommandation is fully implemented in WeasyPrint, except the deprecated
+This recommendation is fully implemented in WeasyPrint, except the deprecated
 System Colors.
 
 .. _CSS Color Module Level 3: http://www.w3.org/TR/css3-color/
@@ -386,7 +428,7 @@ transformations (``matrix3d``, ``rotate(3d|X|Y|Z)``, ``translate(3d|Z)``,
 CSS Backgrounds and Borders Module Level 3
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-The `CSS Backgrounds and Borders Module Level 3`_ is a candidate recommandation
+The `CSS Backgrounds and Borders Module Level 3`_ is a candidate recommendation
 defining properties dealing "with the decoration of the border area and with
 the background of the content, padding and border areas".
 
@@ -425,7 +467,7 @@ CSS Image Values and Replaced Content Module Level 3 / 4
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 The `Image Values and Replaced Content Module Level 3`_ is a candidate
-recommandation introducing "additional ways of representing 2D images, for
+recommendation introducing "additional ways of representing 2D images, for
 example as a list of URIs denoting fallbacks, or as a gradient", defining
 "several properties for manipulating raster images and for sizing or
 positioning replaced elements" and "generic sizing algorithm for replaced
@@ -440,13 +482,14 @@ The ``linear-gradient()``, ``radial-gradient()`` and
 The the ``url()`` notation is supported, but the ``image()`` notation is
 **not** supported for background images.
 
+The ``object-fit`` and ``object-position`` properties are supported.
+
 The ``from-image`` and ``snap`` values of the ``image-resolution`` property are
 **not** supported, but the ``resolution`` value is supported.
 
 The ``image-rendering`` property is supported.
 
-The ``image-orientation``, ``object-fit`` and ``object-position`` are **not**
-supported.
+The ``image-orientation`` property is **not** supported.
 
 .. _Image Values and Replaced Content Module Level 3: http://www.w3.org/TR/css3-images/
 .. _Image Values and Replaced Content Module Level 4: http://www.w3.org/TR/css4-images/
@@ -456,17 +499,16 @@ CSS Basic User Interface Module Level 3
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 The `CSS Basic User Interface Module Level 3`_ also known as CSS3 UI is a
-candidate recommandation describing "CSS properties which enable authors to
+candidate recommendation describing "CSS properties which enable authors to
 style user interface related properties and values."
 
-Only one new property defined in this document is implemented in WeasyPrint:
-the ``box-sizing`` property.
+Two new properties defined in this document are implemented in WeasyPrint:
+the ``box-sizing`` and ``text-overflow`` properties.
 
 Some of the properties do not apply for WeasyPrint: ``cursor``, ``resize``,
 ``caret-color``, ``nav-(up|right|down|left)``.
 
-The other properties are **not** implemented: ``outline-offset`` and
-``text-overflow``.
+The  ``outline-offset`` property is **not** implemented.
 
 .. _CSS Basic User Interface Module Level 3: http://www.w3.org/TR/css-ui-3/
 
@@ -518,9 +560,82 @@ are supported.
 The ``break-before``, ``break-after`` and ``break-inside`` properties are
 **not** supported.
 
-The ``column-span`` property is **not** supported.
+The ``column-span`` property is supported for direct children of columns.
 
 The ``column-fill`` property is supported, with a column balancing algorithm
 that should be efficient with simple cases.
 
 .. _CSS Multi-column Layout Module: https://www.w3.org/TR/css3-multicol/
+
+
+CSS Fragmentation Module Level 3 / 4
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The `CSS Fragmentation Module Level 3`_ "describes the fragmentation model that
+partitions a flow into pages, columns, or regions. It builds on the Page model
+module and introduces and defines the fragmentation model. It adds
+functionality for pagination, breaking variable fragment size and orientation,
+widows and orphans."
+
+The `CSS Fragmentation Module Level 4`_ is a working draft on the same subject.
+
+The ``break-before``, ``break-after`` and ``break-inside`` properties are
+supported for pages, but **not** for columns and regions. ``page-break-*``
+aliases as defined in CSS2 are supported too.
+
+The ``orphans`` and ``widows`` properties are supported.
+
+The ``box-decoration-break`` property is supported, but backgrounds are always
+repeated and not extended through the whole box as it should be with 'slice'
+value.
+
+The ``margin-break`` property is supported.
+
+.. _CSS Fragmentation Module Level 3: https://www.w3.org/TR/css-break-3/
+.. _CSS Fragmentation Module Level 4: https://www.w3.org/TR/css-break-4/
+
+
+CSS Custom Properties for Cascading Variables Module Level 1
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The `CSS Custom Properties for Cascading Variables Module Level 1`_ "introduces
+cascading variables as a new primitive value type that is accepted by all CSS
+properties, and custom properties for defining them."
+
+The custom properties and the ``var()`` notation are supported.
+
+.. _CSS Custom Properties for Cascading Variables Module Level 1:
+   https://www.w3.org/TR/css-variables/
+
+
+CSS Text Decoration Module Level 3
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The `CSS Text Decoration Module Level 3`_ "contains the features of CSS
+relating to text decoration, such as underlines, text shadows, and emphasis
+marks."
+
+The ``text-decoration-line``, ``text-decoration-style`` and
+``text-decoration-color`` properties are supported, except from the ``wavy``
+value of ``text-decoration-style``. The ``text-decoration`` shorthand is also
+supported.
+
+The other properties (``text-underline-position``, ``text-emphasis-*``,
+``text-shadow``) are not supported.
+
+.. _CSS Text Decoration Module Level 3:
+   https://www.w3.org/TR/css-text-decor-3/
+
+
+CSS Flexible Box Layout Module Level 1
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The `CSS Flexible Box Layout Module Level 1`_ "describes a CSS box model
+optimized for user interface design", also known as "flexbox".
+
+This module works for simple use cases but is not deeply tested.
+
+All the ``flex-*``, ``align-*``, ``justify-*`` and ``order`` properties are
+supported. The ``flex`` and ``flex-flow`` shorthands are supported too.
+
+.. _CSS Flexible Box Layout Module Level 1: https://www.w3.org/TR/css-flexbox-1/

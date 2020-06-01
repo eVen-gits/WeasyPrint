@@ -5,9 +5,6 @@
     Utils for CSS properties.
     See http://www.w3.org/TR/CSS21/propidx.html and various CSS3 modules.
 
-    :copyright: Copyright 2011-2018 Simon Sapin and contributors, see AUTHORS.
-    :license: BSD, see LICENSE for details.
-
 """
 
 import functools
@@ -16,8 +13,6 @@ from urllib.parse import unquote, urljoin
 
 from tinycss2.color3 import parse_color
 
-from ..formatting_structure import counters
-from ..images import LinearGradient, RadialGradient
 from ..urls import iri_to_uri, url_is_absolute
 from .properties import Dimension
 
@@ -101,7 +96,7 @@ class InvalidValues(ValueError):
     """Invalid or unsupported values for a known CSS property."""
 
 
-class CenterKeywordFakeToken(object):
+class CenterKeywordFakeToken:
     type = 'ident'
     lower_value = 'center'
     unit = None
@@ -172,13 +167,23 @@ def comma_separated_list(function):
 
 
 def get_keyword(token):
-    """If ``value`` is a keyword, return its name.
+    """If ``token`` is a keyword, return its lowercase name.
 
     Otherwise return ``None``.
 
     """
     if token.type == 'ident':
         return token.lower_value
+
+
+def get_custom_ident(token):
+    """If ``token`` is a keyword, return its name.
+
+    Otherwise return ``None``.
+
+    """
+    if token.type == 'ident':
+        return token.value
 
 
 def get_single_keyword(tokens):
@@ -244,7 +249,7 @@ def parse_2d_position(tokens):
     if length_1 and keyword_2 in ('top', 'center', 'bottom'):
         return length_1, BACKGROUND_POSITION_PERCENTAGES[keyword_2]
     elif length_2 and keyword_1 in ('left', 'center', 'right'):
-            return BACKGROUND_POSITION_PERCENTAGES[keyword_1], length_2
+        return BACKGROUND_POSITION_PERCENTAGES[keyword_1], length_2
     elif (keyword_1 in ('left', 'center', 'right') and
           keyword_2 in ('top', 'center', 'bottom')):
         return (BACKGROUND_POSITION_PERCENTAGES[keyword_1],
@@ -256,10 +261,11 @@ def parse_2d_position(tokens):
                 BACKGROUND_POSITION_PERCENTAGES[keyword_1])
 
 
-def parse_background_position(tokens):
-    """Parse background position.
+def parse_position(tokens):
+    """Parse background-position and object-position.
 
     See http://dev.w3.org/csswg/css3-background/#the-background-position
+    https://drafts.csswg.org/css-images-3/#propdef-object-position
 
     """
     result = parse_2d_position(tokens)
@@ -314,7 +320,7 @@ def parse_radial_gradient_parameters(arguments):
         token = stack.pop()
         keyword = get_keyword(token)
         if keyword == 'at':
-            position = parse_background_position(stack[::-1])
+            position = parse_position(stack[::-1])
             if position is None:
                 return
             break
@@ -350,6 +356,9 @@ def parse_radial_gradient_parameters(arguments):
 def parse_color_stop(tokens):
     if len(tokens) == 1:
         color = parse_color(tokens[0])
+        if color == 'currentColor':
+            # TODO: return the current color instead
+            return parse_color('black'), None
         if color is not None:
             return color, None
     elif len(tokens) == 2:
@@ -367,7 +376,7 @@ def parse_function(function_token):
     space-separated arguments. Return ``None`` otherwise.
 
     """
-    if not function_token.type == 'function':
+    if not getattr(function_token, 'type', None) == 'function':
         return
 
     content = list(remove_whitespace(function_token.arguments))
@@ -387,6 +396,8 @@ def parse_function(function_token):
                 if argument_function is None:
                     return
             arguments.append(token)
+    if last_is_comma:
+        return
     return function_token.lower_name, arguments
 
 
@@ -422,6 +433,8 @@ def check_attr_function(token, allowed_type=None):
 
 
 def check_counter_function(token, allowed_type=None):
+    from .validation.properties import list_style_type
+
     function = parse_function(token)
     if function is None:
         return
@@ -432,7 +445,7 @@ def check_counter_function(token, allowed_type=None):
         ident = args.pop(0)
         if ident.type != 'ident':
             return
-        arguments.append(ident.lower_value)
+        arguments.append(ident.value)
 
         if name == 'counters':
             string = args.pop(0)
@@ -441,8 +454,8 @@ def check_counter_function(token, allowed_type=None):
             arguments.append(string.value)
 
         if args:
-            counter_style = get_keyword(args.pop(0))
-            if counter_style not in ['none'] + list(counters.STYLES):
+            counter_style = list_style_type((args.pop(0),))
+            if counter_style is None:
                 return
             arguments.append(counter_style)
         else:
@@ -466,12 +479,12 @@ def check_content_function(token):
                 return ('content()', ident.lower_value)
 
 
-def check_string_function(token):
+def check_string_or_element_function(string_or_element, token):
     function = parse_function(token)
     if function is None:
         return
     name, args = function
-    if name == 'string' and len(args) in (1, 2):
+    if name == string_or_element and len(args) in (1, 2):
         custom_ident = args.pop(0)
         if custom_ident.type != 'ident':
             return
@@ -486,7 +499,22 @@ def check_string_function(token):
         else:
             ident = 'first'
 
-        return ('string()', (custom_ident, ident))
+        return ('%s()' % string_or_element, (custom_ident, ident))
+
+
+def check_var_function(token):
+    function = parse_function(token)
+    if function is None:
+        return
+    name, args = function
+    if name == 'var' and args:
+        ident = args.pop(0)
+        if ident.type != 'ident' or not ident.value.startswith('--'):
+            return
+
+        # TODO: we should check authorized tokens
+        # https://drafts.csswg.org/css-syntax-3/#typedef-declaration-value
+        return ('var()', (ident.value.replace('-', '_'), args or None))
 
 
 def get_string(token):
@@ -501,7 +529,7 @@ def get_string(token):
         elif token.name == 'content':
             return check_content_function(token)
         elif token.name == 'string':
-            return check_string_function(token)
+            return check_string_or_element_function('string', token)
 
 
 def get_length(token, negative=True, percentage=False):
@@ -534,6 +562,8 @@ def get_resolution(token):
 
 def get_image(token, base_url):
     """Parse an <image> token."""
+    from ..images import LinearGradient, RadialGradient
+
     if token.type != 'function':
         parsed_url = get_url(token, base_url)
         if parsed_url:
@@ -626,7 +656,7 @@ def get_target(token, base_url):
         ident = args.pop(0)
         if ident.type != 'ident':
             return
-        values.append(ident.lower_value)
+        values.append(ident.value)
 
         if name == 'target-counters':
             string = get_string(args.pop(0))
@@ -636,8 +666,6 @@ def get_target(token, base_url):
 
         if args:
             counter_style = get_keyword(args.pop(0))
-            if counter_style not in counters.STYLES:
-                return
         else:
             counter_style = 'decimal'
         values.append(counter_style)
@@ -711,3 +739,5 @@ def get_content_list_token(token, base_url):
         elif arg.type == 'string':
             string = arg.value
         return ('leader()', ('string', string))
+    elif name == 'element':
+        return check_string_or_element_function('element', token)

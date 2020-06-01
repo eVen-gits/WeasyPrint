@@ -4,16 +4,33 @@
 
     Command-line interface to WeasyPrint.
 
-    :copyright: Copyright 2011-2014 Simon Sapin and contributors, see AUTHORS.
-    :license: BSD, see LICENSE for details.
-
 """
 
 import argparse
 import logging
+import platform
 import sys
 
+import cairosvg
+
 from . import HTML, LOGGER, VERSION
+from .text import cairo, pango
+
+
+class PrintInfo(argparse.Action):
+    def __call__(*_, **__):
+        uname = platform.uname()
+        print('System:', uname.system)
+        print('Machine:', uname.machine)
+        print('Version:', uname.version)
+        print('Release:', uname.release)
+        print()
+        print('WeasyPrint version:', VERSION)
+        print('Python version:', sys.version.split()[0])
+        print('Cairo version:', cairo.cairo_version())
+        print('Pango version:', pango.pango_version())
+        print('CairoSVG version:', cairosvg.__version__)
+        sys.exit()
 
 
 def main(argv=None, stdout=None, stdin=None):
@@ -27,7 +44,7 @@ def main(argv=None, stdout=None, stdin=None):
     HTML from stdin. The output is a filename, or ``-`` to write to stdout.
 
     Options can be mixed anywhere before, between, or after the input and
-    output:
+    output.
 
     .. option:: -e <input_encoding>, --encoding <input_encoding>
 
@@ -40,23 +57,23 @@ def main(argv=None, stdout=None, stdin=None):
 
     .. option:: -s <filename_or_URL>, --stylesheet <filename_or_URL>
 
-        Filename or URL of a user CSS stylesheet (see
+        Filename or URL of a user cascading stylesheet (see
         :ref:`stylesheet-origins`) to add to the document
         (e.g. ``-s print.css``). Multiple stylesheets are allowed.
+
+    .. option:: -m <type>, --media-type <type>
+
+        Set the media type to use for ``@media``. Defaults to ``print``.
 
     .. option:: -r <dpi>, --resolution <dpi>
 
         For PNG output only. Set the resolution in PNG pixel per CSS inch.
         Defaults to 96, which means that PNG pixels match CSS pixels.
 
-    .. option:: --base-url <URL>
+    .. option:: -u <URL>, --base-url <URL>
 
         Set the base for relative URLs in the HTML input.
         Defaults to the input’s own URL, or the current directory for stdin.
-
-    .. option:: -m <type>, --media-type <type>
-
-        Set the media type to use for ``@media``. Defaults to ``print``.
 
     .. option:: -a <file>, --attachment <file>
 
@@ -66,7 +83,17 @@ def main(argv=None, stdout=None, stdin=None):
 
     .. option:: -p, --presentational-hints
 
-        Follow HTML presentational hints.
+        Follow `HTML presentational hints
+        <https://www.w3.org/TR/html/rendering.html\
+        #the-css-user-agent-style-sheet-and-presentational-hints>`_.
+
+    .. option:: -v, --verbose
+
+        Show warnings and information messages.
+
+    .. option:: -d, --debug
+
+        Show debugging messages.
 
     .. option:: --version
 
@@ -82,6 +109,8 @@ def main(argv=None, stdout=None, stdin=None):
     parser.add_argument('--version', action='version',
                         version='WeasyPrint version %s' % VERSION,
                         help="Print WeasyPrint's version number and exit.")
+    parser.add_argument('-i', '--info', action=PrintInfo, nargs=0,
+                        help='Print system information and exit.')
     parser.add_argument('-e', '--encoding',
                         help='Character encoding of the input')
     parser.add_argument('-f', '--format', choices=['pdf', 'png'],
@@ -95,7 +124,7 @@ def main(argv=None, stdout=None, stdin=None):
     parser.add_argument('-r', '--resolution', type=float,
                         help='PNG only: the resolution in pixel per CSS inch. '
                              'Defaults to 96, one PNG pixel per CSS pixel.')
-    parser.add_argument('--base-url',
+    parser.add_argument('-u', '--base-url',
                         help='Base for relative URLs in the HTML input. '
                              "Defaults to the input's own filename or URL "
                              'or the current directory for stdin.')
@@ -105,7 +134,11 @@ def main(argv=None, stdout=None, stdin=None):
     parser.add_argument('-p', '--presentational-hints', action='store_true',
                         help='Follow HTML presentational hints.')
     parser.add_argument('-v', '--verbose', action='store_true',
-                        help='Show various debugging information.')
+                        help='Show warnings and information messages.')
+    parser.add_argument('-d', '--debug', action='store_true',
+                        help='Show debugging messages.')
+    parser.add_argument('-q', '--quiet', action='store_true',
+                        help='Hide logging messages.')
     parser.add_argument(
         'input', help='URL or filename of the HTML input, or - for stdin')
     parser.add_argument(
@@ -127,10 +160,7 @@ def main(argv=None, stdout=None, stdin=None):
         format_ = args.format.lower()
 
     if args.input == '-':
-        if stdin is None:
-            stdin = sys.stdin
-        # stdin.buffer on Py3, stdin on Py2
-        source = getattr(stdin, 'buffer', stdin)
+        source = stdin or sys.stdin.buffer
         if args.base_url is None:
             args.base_url = '.'  # current directory
         elif args.base_url == '':
@@ -139,10 +169,7 @@ def main(argv=None, stdout=None, stdin=None):
         source = args.input
 
     if args.output == '-':
-        if stdout is None:
-            stdout = sys.stdout
-        # stdout.buffer on Py3, stdout on Py2
-        output = getattr(stdout, 'buffer', stdout)
+        output = stdout or sys.stdout.buffer
     else:
         output = args.output
 
@@ -162,11 +189,14 @@ def main(argv=None, stdout=None, stdin=None):
             parser.error('--attachment only applies for the PDF format.')
 
     # Default to logging to stderr.
-    if args.verbose:
+    if args.debug:
         LOGGER.setLevel(logging.DEBUG)
-    handler = logging.StreamHandler()
-    handler.setFormatter(logging.Formatter('%(levelname)s: %(message)s'))
-    LOGGER.addHandler(handler)
+    elif args.verbose:
+        LOGGER.setLevel(logging.INFO)
+    if not args.quiet:
+        handler = logging.StreamHandler()
+        handler.setFormatter(logging.Formatter('%(levelname)s: %(message)s'))
+        LOGGER.addHandler(handler)
 
     html = HTML(source, base_url=args.base_url, encoding=args.encoding,
                 media_type=args.media_type)

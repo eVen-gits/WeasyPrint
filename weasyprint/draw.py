@@ -4,19 +4,17 @@
 
     Take an "after layout" box tree and draw it onto a cairo context.
 
-    :copyright: Copyright 2011-2014 Simon Sapin and contributors, see AUTHORS.
-    :license: BSD, see LICENSE for details.
-
 """
 
 import contextlib
-import math
 import operator
+from math import ceil, floor, hypot, pi, sqrt, tan
 
 import cairocffi as cairo
 
 from .formatting_structure import boxes
 from .images import SVGImage
+from .layout import replaced
 from .layout.backgrounds import BackgroundLayer
 from .stacking import StackingContext
 from .text import show_first_line
@@ -252,18 +250,11 @@ def draw_stacking_context(context, stacking_context, enable_hinting):
 
             # Point 7
             for block in [box] + stacking_context.blocks_and_cells:
-                marker_box = getattr(block, 'outside_list_marker', None)
-                if marker_box:
-                    draw_inline_level(
-                        context, stacking_context.page, marker_box,
-                        enable_hinting)
-
                 if isinstance(block, boxes.ReplacedBox):
                     draw_replacedbox(context, block)
                 else:
                     for child in block.children:
                         if isinstance(child, boxes.LineBox):
-                            # TODO: draw inline tables
                             draw_inline_level(
                                 context, stacking_context.page, child,
                                 enable_hinting)
@@ -291,7 +282,7 @@ def rounded_box_path(context, radii):
     the border box. Radii are adjusted from these values. Default is (0, 0, 0,
     0).
 
-    Inspired by Cairo Cookbook
+    Inspired by cairo cookbook
     http://cairographics.org/cookbook/roundedrectangles/
 
     """
@@ -322,7 +313,7 @@ def rounded_box_path(context, radii):
             context.scale(min(rx / ry, 1), min(ry / rx, 1))
         context.arc(
             (-1 if w else 1) * radius, (-1 if h else 1) * radius, radius,
-            (2 + i) * math.pi / 2, (3 + i) * math.pi / 2)
+            (2 + i) * pi / 2, (3 + i) * pi / 2)
         context.restore()
 
 
@@ -426,7 +417,6 @@ def draw_table_backgrounds(context, page, table, enable_hinting):
 
 
 def draw_background_image(context, layer, image_rendering):
-    # Background image
     if layer.image is None:
         return
 
@@ -439,29 +429,38 @@ def draw_background_image(context, layer, image_rendering):
     image_width, image_height = layer.size
 
     if repeat_x == 'no-repeat':
-        repeat_width = painting_width * 2
+        # We want at least the whole image_width drawn on sub_surface, but we
+        # want to be sure it will not be repeated on the painting_width.
+        repeat_width = max(image_width, painting_width)
     elif repeat_x in ('repeat', 'round'):
+        # We repeat the image each image_width.
         repeat_width = image_width
     else:
         assert repeat_x == 'space'
-        n_repeats = math.floor(positioning_width / image_width)
+        n_repeats = floor(positioning_width / image_width)
         if n_repeats >= 2:
+            # The repeat width is the whole positioning width with one image
+            # removed, divided by (the number of repeated images - 1). This
+            # way, we get the width of one image + one space. We ignore
+            # background-position for this dimension.
             repeat_width = (positioning_width - image_width) / (n_repeats - 1)
-            position_x = 0  # Ignore background-position for this dimension
+            position_x = 0
         else:
+            # We don't repeat the image.
             repeat_width = image_width
 
+    # Comments above apply here too.
     if repeat_y == 'no-repeat':
-        repeat_height = painting_height * 2
+        repeat_height = max(image_height, painting_height)
     elif repeat_y in ('repeat', 'round'):
         repeat_height = image_height
     else:
         assert repeat_y == 'space'
-        n_repeats = math.floor(positioning_height / image_height)
+        n_repeats = floor(positioning_height / image_height)
         if n_repeats >= 2:
             repeat_height = (
                 positioning_height - image_height) / (n_repeats - 1)
-            position_y = 0  # Ignore background-position for this dimension
+            position_y = 0
         else:
             repeat_height = image_height
 
@@ -471,7 +470,11 @@ def draw_background_image(context, layer, image_rendering):
     sub_context.clip()
     layer.image.draw(sub_context, image_width, image_height, image_rendering)
     pattern = cairo.SurfacePattern(sub_surface)
-    pattern.set_extend(cairo.EXTEND_REPEAT)
+
+    if repeat_x == repeat_y == 'no-repeat':
+        pattern.set_extend(cairo.EXTEND_NONE)
+    else:
+        pattern.set_extend(cairo.EXTEND_REPEAT)
 
     with stacked(context):
         if not layer.unbounded:
@@ -587,8 +590,8 @@ def clip_border_segment(context, enable_hinting, style, width, side,
     if enable_hinting and style != 'dotted' and (
             # Borders smaller than 1 device unit would disappear
             # without anti-aliasing.
-            math.hypot(*context.user_to_device(width, 0)) >= 1 and
-            math.hypot(*context.user_to_device(0, width)) >= 1):
+            hypot(*context.user_to_device(width, 0)) >= 1 and
+            hypot(*context.user_to_device(0, width)) >= 1):
         # Avoid an artifact in the corner joining two solid borders
         # of the same color.
         context.set_antialias(cairo.ANTIALIAS_NONE)
@@ -625,8 +628,8 @@ def clip_border_segment(context, enable_hinting, style, width, side,
 
         """
         x = (a - b) / (a + b)
-        return math.pi / 8 * (a + b) * (
-            1 + 3 * x ** 2 / (10 + math.sqrt(4 - 3 * x ** 2)))
+        return pi / 8 * (a + b) * (
+            1 + 3 * x ** 2 / (10 + sqrt(4 - 3 * x ** 2)))
 
     if side == 'top':
         (px1, py1), rounded1 = transition_point(tlh, tlv, bl, bt)
@@ -691,9 +694,9 @@ def clip_border_segment(context, enable_hinting, style, width, side,
             else:
                 # 2x - 1/2 dashes
                 dash = length / (dash_length + dash_length % 2 - 0.5)
-            dashes1 = int(math.ceil((chl1 - dash / 2) / dash))
-            dashes2 = int(math.ceil((chl2 - dash / 2) / dash))
-            line = int(math.floor(line_length / dash))
+            dashes1 = int(ceil((chl1 - dash / 2) / dash))
+            dashes2 = int(ceil((chl2 - dash / 2) / dash))
+            line = int(floor(line_length / dash))
 
             def draw_dots(dashes, line, way, x, y, px, py, chl):
                 if not dashes:
@@ -702,36 +705,36 @@ def clip_border_segment(context, enable_hinting, style, width, side,
                     i += 0.5  # half dash
                     angle1 = (
                         ((2 * angle - way) + i * way * dash / chl) /
-                        4 * math.pi)
+                        4 * pi)
                     angle2 = (min if way > 0 else max)(
                         ((2 * angle - way) + (i + 1) * way * dash / chl) /
-                        4 * math.pi,
-                        angle * math.pi / 2)
+                        4 * pi,
+                        angle * pi / 2)
                     if side in ('top', 'bottom'):
                         context.move_to(x + px, main_offset + py)
                         context.line_to(
-                            x + px - way * px * 1 / math.tan(angle2),
+                            x + px - way * px * 1 / tan(angle2),
                             main_offset)
                         context.line_to(
-                            x + px - way * px * 1 / math.tan(angle1),
+                            x + px - way * px * 1 / tan(angle1),
                             main_offset)
                     elif side in ('left', 'right'):
                         context.move_to(main_offset + px, y + py)
                         context.line_to(
                             main_offset,
-                            y + py + way * py * math.tan(angle2))
+                            y + py + way * py * tan(angle2))
                         context.line_to(
                             main_offset,
-                            y + py + way * py * math.tan(angle1))
-                    if angle2 == angle * math.pi / 2:
+                            y + py + way * py * tan(angle1))
+                    if angle2 == angle * pi / 2:
                         offset = (angle1 - angle2) / ((
                             ((2 * angle - way) + (i + 1) * way * dash / chl) /
-                            4 * math.pi) - angle1)
+                            4 * pi) - angle1)
                         line += 1
                         break
                 else:
                     offset = 1 - (
-                        (angle * math.pi / 2 - angle2) / (angle2 - angle1))
+                        (angle * pi / 2 - angle2) / (angle2 - angle1))
                 return line, offset
 
             line, offset = draw_dots(
@@ -862,7 +865,10 @@ def draw_collapsed_borders(context, table, enable_hinting):
     grid_width = len(column_widths)
     assert grid_width == len(column_positions)
     # Add the end of the last column, but make a copy from the table attr.
-    column_positions += [column_positions[-1] + column_widths[-1]]
+    if table.style['direction'] == 'ltr':
+        column_positions.append(column_positions[-1] + column_widths[-1])
+    else:
+        column_positions.insert(0, column_positions[0] + column_widths[0])
     # Add the end of the last row. No copy here, we own this list
     row_positions.append(row_positions[-1] + row_heights[-1])
     vertical_borders, horizontal_borders = table.collapsed_border_grid
@@ -931,11 +937,15 @@ def draw_collapsed_borders(context, table, enable_hinting):
         if width == 0 or color.alpha == 0:
             return
         pos_y = row_positions[y]
-        # TODO: change signs for rtl when we support rtl tables?
-        pos_x1 = column_positions[x] - half_max_width(vertical_borders, [
-            (y - 1, x), (y, x)])
-        pos_x2 = column_positions[x + 1] + half_max_width(vertical_borders, [
-            (y - 1, x + 1), (y, x + 1)])
+        shift_before = half_max_width(vertical_borders, [(y - 1, x), (y, x)])
+        shift_after = half_max_width(
+            vertical_borders, [(y - 1, x + 1), (y, x + 1)])
+        if table.style['direction'] == 'ltr':
+            pos_x1 = column_positions[x] - shift_before
+            pos_x2 = column_positions[x + 1] + shift_after
+        else:
+            pos_x1 = column_positions[x + 1] - shift_after
+            pos_x2 = column_positions[x] + shift_before
         segments.append((
             score, style, width, color, 'top',
             (pos_x1, pos_y - width / 2, pos_x2 - pos_x1, 0)))
@@ -974,15 +984,18 @@ def draw_replacedbox(context, box):
     if box.style['visibility'] != 'visible' or not box.width or not box.height:
         return
 
+    draw_width, draw_height, draw_x, draw_y = replaced.replacedbox_layout(box)
+
     with stacked(context):
         rounded_box_path(context, box.rounded_content_box())
         context.clip()
-        context.translate(box.content_box_x(), box.content_box_y())
+        context.translate(draw_x, draw_y)
         box.replacement.draw(
-            context, box.width, box.height, box.style['image_rendering'])
+            context, draw_width, draw_height, box.style['image_rendering'])
 
 
-def draw_inline_level(context, page, box, enable_hinting):
+def draw_inline_level(context, page, box, enable_hinting, offset_x=0,
+                      text_overflow='clip'):
     if isinstance(box, StackingContext):
         stacking_context = box
         assert isinstance(
@@ -992,20 +1005,32 @@ def draw_inline_level(context, page, box, enable_hinting):
         draw_background(context, box.background, enable_hinting)
         draw_border(context, box, enable_hinting)
         if isinstance(box, (boxes.InlineBox, boxes.LineBox)):
+            if isinstance(box, boxes.LineBox):
+                text_overflow = box.text_overflow
             for child in box.children:
-                if isinstance(child, boxes.TextBox):
-                    draw_text(context, child, enable_hinting)
+                if isinstance(child, StackingContext):
+                    child_offset_x = offset_x
                 else:
-                    draw_inline_level(context, page, child, enable_hinting)
+                    child_offset_x = (
+                        offset_x + child.position_x - box.position_x)
+                if isinstance(child, boxes.TextBox):
+                    draw_text(
+                        context, child, enable_hinting,
+                        child_offset_x, text_overflow)
+                else:
+                    draw_inline_level(
+                        context, page, child, enable_hinting, child_offset_x,
+                        text_overflow)
         elif isinstance(box, boxes.InlineReplacedBox):
             draw_replacedbox(context, box)
         else:
             assert isinstance(box, boxes.TextBox)
             # Should only happen for list markers
-            draw_text(context, box, enable_hinting)
+            draw_text(context, box, enable_hinting, offset_x, text_overflow)
 
 
-def draw_text(context, textbox, enable_hinting):
+def draw_text(context, textbox, enable_hinting, offset_x=0,
+              text_overflow='clip'):
     """Draw ``textbox`` to a ``cairo.Context`` from ``PangoCairo.Context``."""
     # Pango crashes with font-size: 0
     assert textbox.style['font_size']
@@ -1015,12 +1040,19 @@ def draw_text(context, textbox, enable_hinting):
 
     context.move_to(textbox.position_x, textbox.position_y + textbox.baseline)
     context.set_source_rgba(*textbox.style['color'])
-    show_first_line(context, textbox.pango_layout, enable_hinting)
-    values = textbox.style['text_decoration']
+
+    textbox.pango_layout.reactivate(textbox.style)
+    show_first_line(context, textbox, text_overflow)
+
+    values = textbox.style['text_decoration_line']
 
     thickness = textbox.style['font_size'] / 18  # Like other browsers do
     if enable_hinting and thickness < 1:
         thickness = 1
+
+    color = textbox.style['text_decoration_color']
+    if color == 'currentColor':
+        color = textbox.style['color']
 
     if ('overline' in values or
             'line-through' in values or
@@ -1028,29 +1060,75 @@ def draw_text(context, textbox, enable_hinting):
         metrics = textbox.pango_layout.get_font_metrics()
     if 'overline' in values:
         draw_text_decoration(
-            context, textbox,
+            context, textbox, offset_x,
             textbox.baseline - metrics.ascent + thickness / 2,
-            thickness, enable_hinting)
+            thickness, enable_hinting, color)
     if 'underline' in values:
         draw_text_decoration(
-            context, textbox,
+            context, textbox, offset_x,
             textbox.baseline - metrics.underline_position + thickness / 2,
-            thickness, enable_hinting)
+            thickness, enable_hinting, color)
     if 'line-through' in values:
         draw_text_decoration(
-            context, textbox,
+            context, textbox, offset_x,
             textbox.baseline - metrics.strikethrough_position,
-            thickness, enable_hinting)
+            thickness, enable_hinting, color)
+
+    textbox.pango_layout.deactivate()
 
 
-def draw_text_decoration(context, textbox, offset_y, thickness,
-                         enable_hinting):
+def draw_wave(context, x, y, width, offset_x, radius):
+    context.new_path()
+    diameter = 2 * radius
+    wave_index = offset_x // diameter
+    remain = offset_x - wave_index * diameter
+
+    while width > 0:
+        up = (wave_index % 2 == 0)
+        center_x = x - remain + radius
+        alpha1 = (1 + remain / diameter) * pi
+        alpha2 = (1 + min(1, width / diameter)) * pi
+
+        if up:
+            context.arc(center_x, y, radius, alpha1, alpha2)
+        else:
+            context.arc_negative(
+                center_x, y, radius, -alpha1, -alpha2)
+
+        x += diameter - remain
+        width -= diameter - remain
+        remain = 0
+        wave_index += 1
+
+
+def draw_text_decoration(context, textbox, offset_x, offset_y, thickness,
+                         enable_hinting, color):
     """Draw text-decoration of ``textbox`` to a ``cairo.Context``."""
+    style = textbox.style['text_decoration_style']
     with stacked(context):
         if enable_hinting:
             context.set_antialias(cairo.ANTIALIAS_NONE)
-        context.set_source_rgba(*textbox.style['color'])
+        context.set_source_rgba(*color)
         context.set_line_width(thickness)
-        context.move_to(textbox.position_x, textbox.position_y + offset_y)
-        context.rel_line_to(textbox.width, 0)
+
+        if style == 'dashed':
+            context.set_dash([5 * thickness], offset=offset_x)
+        elif style == 'dotted':
+            context.set_dash([thickness], offset=offset_x)
+
+        if style == 'wavy':
+            draw_wave(
+                context,
+                textbox.position_x, textbox.position_y + offset_y,
+                textbox.width, offset_x, 0.75 * thickness)
+        else:
+            context.move_to(textbox.position_x, textbox.position_y + offset_y)
+            context.rel_line_to(textbox.width, 0)
+
+        if style == 'double':
+            delta = 2 * thickness
+            context.move_to(
+                textbox.position_x, textbox.position_y + offset_y + delta)
+            context.rel_line_to(textbox.width, 0)
+
         context.stroke()

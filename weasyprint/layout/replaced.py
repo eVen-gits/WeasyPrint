@@ -5,26 +5,9 @@
     Layout for images and other replaced elements.
     http://dev.w3.org/csswg/css-images-3/#sizing
 
-    :copyright: Copyright 2011-2014 Simon Sapin and contributors, see AUTHORS.
-    :license: BSD, see LICENSE for details.
-
 """
 
-
-def image_marker_layout(box):
-    """Layout the :class:`boxes.ImageMarkerBox` ``box``.
-
-    :class:`boxes.ImageMarkerBox` objects are :class:`boxes.ReplacedBox`
-    objects, but their used size is computed differently.
-
-    """
-    image = box.replacement
-    one_em = box.style['font_size']
-    iwidth, iheight = image.get_intrinsic_size(
-        box.style['image_resolution'], one_em)
-    box.width, box.height = default_image_sizing(
-        iwidth, iheight, image.intrinsic_ratio, box.width, box.height,
-        default_width=one_em, default_height=one_em)
+from .percentages import percentage
 
 
 def default_image_sizing(intrinsic_width, intrinsic_height, intrinsic_ratio,
@@ -97,3 +80,49 @@ def _constraint_image_sizing(
         return constraint_height * intrinsic_ratio, constraint_height
     else:
         return constraint_width, constraint_width / intrinsic_ratio
+
+
+def replacedbox_layout(box):
+    # TODO: respect box-sizing ?
+    object_fit = box.style['object_fit']
+    position = box.style['object_position']
+
+    image = box.replacement
+    intrinsic_width, intrinsic_height = image.get_intrinsic_size(
+        box.style['image_resolution'], box.style['font_size'])
+    if None in (intrinsic_width, intrinsic_height):
+        intrinsic_width, intrinsic_height = contain_constraint_image_sizing(
+            box.width, box.height, box.replacement.intrinsic_ratio)
+
+    if object_fit == 'fill':
+        draw_width, draw_height = box.width, box.height
+    else:
+        if object_fit == 'contain' or object_fit == 'scale-down':
+            draw_width, draw_height = contain_constraint_image_sizing(
+                box.width, box.height, box.replacement.intrinsic_ratio)
+        elif object_fit == 'cover':
+            draw_width, draw_height = cover_constraint_image_sizing(
+                box.width, box.height, box.replacement.intrinsic_ratio)
+        else:
+            assert object_fit == 'none', object_fit
+            draw_width, draw_height = intrinsic_width, intrinsic_height
+
+        if object_fit == 'scale-down':
+            draw_width = min(draw_width, intrinsic_width)
+            draw_height = min(draw_height, intrinsic_height)
+
+    origin_x, position_x, origin_y, position_y = position[0]
+    ref_x = box.width - draw_width
+    ref_y = box.height - draw_height
+
+    position_x = percentage(position_x, ref_x)
+    position_y = percentage(position_y, ref_y)
+    if origin_x == 'right':
+        position_x = ref_x - position_x
+    if origin_y == 'bottom':
+        position_y = ref_y - position_y
+
+    position_x += box.content_box_x()
+    position_y += box.content_box_y()
+
+    return draw_width, draw_height, position_x, position_y

@@ -4,9 +4,6 @@
 
     Tests for pages layout.
 
-    :copyright: Copyright 2011-2018 Simon Sapin and contributors, see AUTHORS.
-    :license: BSD, see LICENSE for details.
-
 """
 
 import pytest
@@ -324,7 +321,7 @@ def test_page_breaks_complex_5():
     html, = page_1.children
     body, = html.children
     div, = body.children
-    assert div.height == 30
+    assert div.height == 100
     html, = page_2.children
     body, = html.children
     div, img_4 = body.children
@@ -357,17 +354,18 @@ def test_page_breaks_complex_6():
     html, = page_1.children
     body, = html.children
     div, = body.children
-    assert div.height == 30
+    assert div.height == 100
     html, = page_2.children
     body, = html.children
     div, = body.children
     section, = div.children
     img_2, = section.children
     assert img_2.height == 30
-    # TODO: currently this is 60: we do not decrease the used height of
-    # blocks with 'height: auto' when we remove children from them for
-    # some page-break-*: avoid.
-    # assert div.height == 30
+    # TODO: currently this is 60: we do not increase the used height of blocks
+    # to make them fill the blank space at the end of the age when we remove
+    # children from them for some break-*: avoid.
+    # See TODOs in blocks.block_container_layout
+    # assert div.height == 100
     html, = page_3.children
     body, = html.children
     div, img_4, img_5, = body.children
@@ -425,6 +423,98 @@ def test_page_breaks_complex_8():
     assert div_4.position_y == 20
     assert div_3.height == 20
     assert div_4.height == 20
+
+
+@assert_no_logs
+@pytest.mark.parametrize('break_after, margin_break, margin_top', (
+    ('page', 'auto', 5),
+    ('auto', 'auto', 0),
+    ('page', 'keep', 5),
+    ('auto', 'keep', 5),
+    ('page', 'discard', 0),
+    ('auto', 'discard', 0),
+))
+def test_margin_break(break_after, margin_break, margin_top):
+    page_1, page_2 = render_pages('''
+      <style>
+        @page { size: 70px; margin: 0 }
+        div { height: 63px; margin: 5px 0 8px;
+              break-after: %s; margin-break: %s }
+      </style>
+      <section>
+        <div></div>
+      </section>
+      <section>
+        <div></div>
+      </section>
+    ''' % (break_after, margin_break))
+    html, = page_1.children
+    body, = html.children
+    section, = body.children
+    div, = section.children
+    assert div.margin_top == 5
+
+    html, = page_2.children
+    body, = html.children
+    section, = body.children
+    div, = section.children
+    assert div.margin_top == margin_top
+
+
+@pytest.mark.xfail
+@assert_no_logs
+def test_margin_break_clearance():  # pragma: no cover
+    page_1, page_2 = render_pages('''
+      <style>
+        @page { size: 70px; margin: 0 }
+        div { height: 63px; margin: 5px 0 8px; break-after: page }
+      </style>
+      <section>
+        <div></div>
+      </section>
+      <section>
+        <div style="border-top: 1px solid black">
+          <div></div>
+        </div>
+      </section>
+    ''')
+    html, = page_1.children
+    body, = html.children
+    section, = body.children
+    div, = section.children
+    assert div.margin_top == 5
+
+    html, = page_2.children
+    body, = html.children
+    section, = body.children
+    div_1, = section.children
+    assert div_1.margin_top == 0
+    div_2, = div_1.children
+    assert div_2.margin_top == 5
+    assert div_2.content_box_y() == 5
+
+
+@assert_no_logs
+@pytest.mark.parametrize('direction, page_break, pages_number', (
+    ('ltr', 'recto', 3),
+    ('ltr', 'verso', 2),
+    ('rtl', 'recto', 3),
+    ('rtl', 'verso', 2),
+    ('ltr', 'right', 3),
+    ('ltr', 'left', 2),
+    ('rtl', 'right', 2),
+    ('rtl', 'left', 3),
+))
+def test_recto_verso_break(direction, page_break, pages_number):
+    pages = render_pages('''
+      <style>
+        html { direction: %s }
+        p { break-before: %s }
+      </style>
+      abc
+      <p>def</p>
+    ''' % (direction, page_break))
+    assert len(pages) == pages_number
 
 
 @assert_no_logs
@@ -1121,3 +1211,135 @@ def test_margin_boxes_vertical_align():
     assert line_1.position_y == 3
     assert line_2.position_y == 43
     assert line_3.position_y == 83
+
+
+@assert_no_logs
+def test_margin_boxes_element():
+    pages = render_pages('''
+      <style>
+        footer {
+          position: running(footer);
+        }
+        @page {
+          margin: 50px;
+          size: 200px;
+          @bottom-center {
+            content: element(footer);
+          }
+        }
+        h1 {
+          height: 40px;
+        }
+        .pages:before {
+          content: counter(page);
+        }
+        .pages:after {
+          content: counter(pages);
+        }
+      </style>
+      <footer class="pages"> of </footer>
+      <h1>test1</h1>
+      <h1>test2</h1>
+      <h1>test3</h1>
+      <h1>test4</h1>
+      <h1>test5</h1>
+      <h1>test6</h1>
+      <footer>Static</footer>
+    ''')
+    footer1_text = ''.join(
+        getattr(node, 'text', '')
+        for node in pages[0].children[1].descendants())
+    assert footer1_text == '1 of 3'
+
+    footer2_text = ''.join(
+        getattr(node, 'text', '')
+        for node in pages[1].children[1].descendants())
+    assert footer2_text == '2 of 3'
+
+    footer3_text = ''.join(
+        getattr(node, 'text', '')
+        for node in pages[2].children[1].descendants())
+    assert footer3_text == 'Static'
+
+
+@assert_no_logs
+@pytest.mark.parametrize('argument, texts', (
+    # TODO: start doesn’t work because running elements are removed from the
+    # original tree, and the current implentation in
+    # layout.get_running_element_for uses the tree to know if it’s at the
+    # beginning of the page
+
+    # ('start', ('', '2-first', '2-last', '3-last', '5')),
+
+    ('first', ('', '2-first', '3-first', '3-last', '5')),
+    ('last', ('', '2-last', '3-last', '3-last', '5')),
+    ('first-except', ('', '', '', '3-last', '')),
+))
+def test_running_elements(argument, texts):
+    pages = render_pages('''
+      <style>
+        @page {
+          margin: 50px;
+          size: 200px;
+          @bottom-center { content: element(title %s) }
+        }
+        article { break-after: page }
+        h1 { position: running(title) }
+      </style>
+      <article>
+        <div>1</div>
+      </article>
+      <article>
+        <h1>2-first</h1>
+        <h1>2-last</h1>
+      </article>
+      <article>
+        <p>3</p>
+        <h1>3-first</h1>
+        <h1>3-last</h1>
+      </article>
+      <article>
+      </article>
+      <article>
+        <h1>5</h1>
+      </article>
+    ''' % argument)
+    assert len(pages) == 5
+    for page, text in zip(pages, texts):
+        html, margin = page.children
+        if margin.children:
+            h1, = margin.children
+            line, = h1.children
+            textbox, = line.children
+            assert textbox.text == text
+        else:
+            assert not text
+
+
+@assert_no_logs
+def test_running_elements_display():
+    page, = render_pages('''
+      <style>
+        @page {
+          margin: 50px;
+          size: 200px;
+          @bottom-left { content: element(inline) }
+          @bottom-center { content: element(block) }
+          @bottom-right { content: element(table) }
+        }
+        table { position: running(table) }
+        div { position: running(block) }
+        span { position: running(inline) }
+      </style>
+      text
+      <table><tr><td>table</td></tr></table>
+      <div>block</div>
+      <span>inline</span>
+    ''')
+    html, left, center, right = page.children
+    assert ''.join(
+        getattr(node, 'text', '') for node in left.descendants()) == 'inline'
+    assert ''.join(
+        getattr(node, 'text', '') for node in center.descendants()) == 'block'
+    assert ''.join(
+        getattr(node, 'text', '') for node in right.descendants()) == 'table'

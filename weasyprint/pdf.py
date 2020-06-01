@@ -22,9 +22,6 @@
     rather than silently behave incorrectly.
 
 
-    :copyright: Copyright 2011-2018 Simon Sapin and contributors, see AUTHORS.
-    :license: BSD, see LICENSE for details.
-
 """
 
 import hashlib
@@ -72,17 +69,17 @@ class PDFFormatter(string.Formatter):
             return '({0})'.format(pdf_escape(
                 ('\ufeff' + value).encode('utf-16-be').decode('latin1')))
         else:
-            return super(PDFFormatter, self).convert_field(value, conversion)
+            return super().convert_field(value, conversion)
 
     def vformat(self, format_string, args, kwargs):
-        result = super(PDFFormatter, self).vformat(format_string, args, kwargs)
+        result = super().vformat(format_string, args, kwargs)
         return result.encode('latin1')
 
 
 pdf_format = PDFFormatter().format
 
 
-class PDFDictionary(object):
+class PDFDictionary:
     def __init__(self, object_number, byte_string):
         self.object_number = object_number
         self.byte_string = byte_string
@@ -107,7 +104,7 @@ class PDFDictionary(object):
 
         """
         # No end delimiter, + defaults to greedy
-        return self.get_value('Type', '/(\w+)').decode('ascii')
+        return self.get_value('Type', '/(\\w+)').decode('ascii')
 
     def get_indirect_dict(self, key, pdf_file):
         """Read the value for `key` and follow the reference.
@@ -117,7 +114,7 @@ class PDFDictionary(object):
         :return: a new PDFDictionary instance.
 
         """
-        object_number = int(self.get_value(key, '(\d+) 0 R'))
+        object_number = int(self.get_value(key, '(\\d+) 0 R'))
         return type(self)(object_number, pdf_file.read_object(object_number))
 
     def get_indirect_dict_array(self, key, pdf_file):
@@ -128,7 +125,7 @@ class PDFDictionary(object):
         :return: a list of new PDFDictionary instance.
 
         """
-        parts = self.get_value(key, '\[(.+?)\]').split(b' 0 R')
+        parts = self.get_value(key, '\\[(.+?)\\]').split(b' 0 R')
         # The array looks like this: ' <a> 0 R <b> 0 R <c> 0 R '
         # so `parts` ends up like this [' <a>', ' <b>', ' <c>', ' ']
         # With the trailing white space in the list.
@@ -139,9 +136,9 @@ class PDFDictionary(object):
         return [class_(n, read(n)) for n in map(int, parts)]
 
 
-class PDFFile(object):
+class PDFFile:
     trailer_re = re.compile(
-        b'\ntrailer\n(.+)\nstartxref\n(\d+)\n%%EOF\n$', re.DOTALL)
+        b'\ntrailer\n(.+)\nstartxref\n(\\d+)\n%%EOF\n$', re.DOTALL)
 
     def __init__(self, fileobj):
         # cairo’s trailer only has Size, Root and Info.
@@ -253,14 +250,14 @@ class PDFFile(object):
             self._write_object(object_number, byte_string))
         return object_number
 
-    def finish(self):
+    def finish(self, finished=True):
         """Write cross-ref table and trailer for new and overwritten objects.
 
         This makes `fileobj` a valid (updated) PDF file.
 
         """
         new_startxref, write = self._start_writing()
-        self.finished = True
+        self.finished = finished
         write(b'xref\n')
 
         # Don’t bother sorting or finding contiguous numbers,
@@ -286,6 +283,9 @@ class PDFFile(object):
             info=self.info.object_number,
             prev=self.startxref,
             startxref=new_startxref))
+        # We might want to write more than one trailer,
+        # ie. when applying a Digital Signature
+        self.startxref = new_startxref
 
     def _write_object(self, object_number, byte_string):
         offset, write = self._start_writing()
@@ -477,7 +477,7 @@ def _write_pdf_attachment(pdf, attachment, url_fetcher):
 
 
 def write_pdf_metadata(fileobj, scale, url_fetcher, attachments,
-                       attachment_links, pages):
+                       attachment_links, pages, finisher):
     """Add PDF metadata that are not handled by cairo.
 
     Includes:
@@ -521,7 +521,7 @@ def write_pdf_metadata(fileobj, scale, url_fetcher, attachments,
         # Add bleed box
 
         media_box = pdf_page.get_value(
-            'MediaBox', '\[(.+?)\]').decode('ascii').strip()
+            'MediaBox', '\\[(.+?)\\]').decode('ascii').strip()
         left, top, right, bottom = (
             float(value) for value in media_box.split(' '))
         # Convert pixels into points
@@ -588,4 +588,4 @@ def write_pdf_metadata(fileobj, scale, url_fetcher, attachments,
                 '/Annots [{0}]', ' '.join(
                     '{0} 0 R'.format(n) for n in annotations)))
 
-    pdf.finish()
+    pdf.finish() if finisher is None else finisher(pdf)

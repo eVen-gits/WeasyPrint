@@ -5,11 +5,9 @@
     Convert *specified* property values (the result of the cascade and
     inhertance) into *computed* values (that are inherited).
 
-    :copyright: Copyright 2011-2018 Simon Sapin and contributors, see AUTHORS.
-    :license: BSD, see LICENSE for details.
-
 """
 
+from collections import OrderedDict
 from urllib.parse import unquote
 
 from tinycss2.color3 import parse_color
@@ -17,9 +15,11 @@ from tinycss2.color3 import parse_color
 from .. import text
 from ..logger import LOGGER
 from ..urls import get_link_attribute
-from .properties import INITIAL_VALUES, Dimension
+from .properties import (
+    INHERITED, INITIAL_NOT_COMPUTED, INITIAL_VALUES, Dimension)
 from .utils import (
-    ANGLE_TO_RADIANS, LENGTH_UNITS, LENGTHS_TO_PIXELS, safe_urljoin)
+    ANGLE_TO_RADIANS, LENGTH_UNITS, LENGTHS_TO_PIXELS, check_var_function,
+    safe_urljoin)
 
 ZERO_PIXELS = Dimension(0, 'px')
 
@@ -27,8 +27,7 @@ ZERO_PIXELS = Dimension(0, 'px')
 # Value in pixels of font-size for <absolute-size> keywords: 12pt (16px) for
 # medium, and scaling factors given in CSS3 for others:
 # http://www.w3.org/TR/css3-fonts/#font-size-prop
-# TODO: this will need to be ordered to implement 'smaller' and 'larger'
-FONT_SIZE_KEYWORDS = dict(
+FONT_SIZE_KEYWORDS = OrderedDict(
     # medium is 16px, others are a ratio of medium
     (name, INITIAL_VALUES['font_size'] * a / b)
     for name, a, b in (
@@ -139,6 +138,33 @@ COMPUTING_ORDER = _computing_order()
 COMPUTER_FUNCTIONS = {}
 
 
+def _resolve_var(computed, variable_name, default):
+    known_variable_names = [variable_name]
+
+    computed_value = computed.get(variable_name)
+    if computed_value and len(computed_value) == 1:
+        value = computed_value[0]
+        if value.type == 'ident' and value.value == 'initial':
+            return default
+
+    computed_value = computed.get(variable_name, default)
+    while (computed_value and
+            isinstance(computed_value, tuple)
+            and len(computed_value) == 1):
+        var_function = check_var_function(computed_value[0])
+        if var_function:
+            new_variable_name, new_default = var_function[1]
+            if new_variable_name in known_variable_names:
+                computed_value = default
+                break
+            known_variable_names.append(new_variable_name)
+            computed_value = computed.get(new_variable_name, new_default)
+            default = new_default
+        else:
+            break
+    return computed_value
+
+
 def register_computer(name):
     """Decorator registering a property ``name`` for a function."""
     name = name.replace('-', '_')
@@ -167,23 +193,19 @@ def compute(element, pseudo_type, specified, computed, parent_style,
     :param target_collector: A target collector used to get computed targets.
 
     """
+    from .validation.properties import PROPERTIES
 
-    def computer():
-        """Dummy object that holds attributes."""
-        return 0
-
-    computer.is_root_element = parent_style is None
-    if parent_style is None:
-        parent_style = INITIAL_VALUES
-
-    computer.element = element
-    computer.pseudo_type = pseudo_type
-    computer.specified = specified
-    computer.computed = computed
-    computer.parent_style = parent_style
-    computer.root_style = root_style
-    computer.base_url = base_url
-    computer.target_collector = target_collector
+    computer = {
+        'is_root_element': parent_style is None,
+        'element': element,
+        'pseudo_type': pseudo_type,
+        'specified': specified,
+        'computed': computed,
+        'parent_style': parent_style or INITIAL_VALUES,
+        'root_style': root_style,
+        'base_url': base_url,
+        'target_collector': target_collector,
+    }
 
     getter = COMPUTER_FUNCTIONS.get
 
@@ -194,7 +216,41 @@ def compute(element, pseudo_type, specified, computed, parent_style,
 
         value = specified[name]
         function = getter(name)
-        if function is not None:
+        already_computed_value = False
+
+        if value and isinstance(value, tuple) and value[0] == 'var()':
+            variable_name, default = value[1]
+            computed_value = _resolve_var(computed, variable_name, default)
+            if computed_value is None:
+                new_value = None
+            else:
+                prop = PROPERTIES[name.replace('_', '-')]
+                if prop.wants_base_url:
+                    new_value = prop(computed_value, base_url)
+                else:
+                    new_value = prop(computed_value)
+
+            # See https://drafts.csswg.org/css-variables/#invalid-variables
+            if new_value is None:
+                try:
+                    computed_value = ''.join(
+                        token.serialize() for token in computed_value)
+                except BaseException:
+                    pass
+                LOGGER.warning(
+                    'Unsupported computed value `%s` set in variable `%s` '
+                    'for property `%s`.', computed_value,
+                    variable_name.replace('_', '-'), name.replace('_', '-'))
+                if name in INHERITED and parent_style:
+                    already_computed_value = True
+                    value = parent_style[name]
+                else:
+                    already_computed_value = name not in INITIAL_NOT_COMPUTED
+                    value = INITIAL_VALUES[name]
+            else:
+                value = new_value
+
+        if function is not None and not already_computed_value:
             value = function(computer, name, value)
         # else: same as specified
 
@@ -213,7 +269,7 @@ def background_image(computer, name, values):
                 length(computer, name, pos) if pos is not None else None
                 for pos in value.stop_positions)
         if type_ == 'radial-gradient':
-            value.center, = background_position(
+            value.center, = compute_position(
                 computer, name, (value.center,))
             if value.size_type == 'explicit':
                 value.size = length_or_percentage_tuple(
@@ -222,7 +278,8 @@ def background_image(computer, name, values):
 
 
 @register_computer('background-position')
-def background_position(computer, name, values):
+@register_computer('object-position')
+def compute_position(computer, name, values):
     """Compute lengths in background-position."""
     return tuple(
         (origin_x, length(computer, name, pos_x),
@@ -293,24 +350,24 @@ def length(computer, name, value, font_size=None, pixels_only=False):
         result = value.value * LENGTHS_TO_PIXELS[unit]
     elif unit in ('em', 'ex', 'ch', 'rem'):
         if font_size is None:
-            font_size = computer.computed['font_size']
+            font_size = computer['computed']['font_size']
         if unit == 'ex':
             # TODO: cache
-            result = value.value * font_size * ex_ratio(computer.computed)
+            result = value.value * font_size * ex_ratio(computer['computed'])
         elif unit == 'ch':
             # TODO: cache
             # TODO: use context to use @font-face fonts
             layout = text.Layout(
                 context=None, font_size=font_size,
-                style=computer.computed)
+                style=computer['computed'])
             layout.set_text('0')
-            line, = layout.iter_lines()
-            logical_width, _ = text.get_size(line, computer.computed)
+            line, _ = layout.get_first_line()
+            logical_width, _ = text.get_size(line, computer['computed'])
             result = value.value * logical_width
         elif unit == 'em':
             result = value.value * font_size
         elif unit == 'rem':
-            result = value.value * computer.root_style['font_size']
+            result = value.value * computer['root_style']['font_size']
     else:
         # A percentage or 'auto': no conversion needed.
         return value
@@ -324,7 +381,7 @@ def length(computer, name, value, font_size=None, pixels_only=False):
 @register_computer('bleed-bottom')
 def bleed(computer, name, value):
     if value == 'auto':
-        if 'crop' in computer.computed['marks']:
+        if 'crop' in computer['computed']['marks']:
             return Dimension(8, 'px')  # 6pt
         else:
             return Dimension(0, 'px')
@@ -357,7 +414,7 @@ def background_size(computer, name, values):
 @register_computer('outline-width')
 def border_width(computer, name, value):
     """Compute the ``border-*-width`` properties."""
-    style = computer.computed[name.replace('width', 'style')]
+    style = computer['computed'][name.replace('width', 'style')]
     if style in ('none', 'hidden'):
         return 0
 
@@ -400,11 +457,11 @@ def compute_attr_function(computer, values):
     func_name, value = values
     assert func_name == 'attr()'
     attr_name, type_or_unit, fallback = value
-    # computer.element sometimes is None
-    # computer.element sometimes is a 'PageType' object without .get()
+    # computer['element'] sometimes is None
+    # computer['element'] sometimes is a 'PageType' object without .get()
     # so wrapt the .get() into try and return None instead of crashing
     try:
-        attr_value = computer.element.get(attr_name, fallback)
+        attr_value = computer['element'].get(attr_name, fallback)
         if type_or_unit == 'string':
             pass  # Keep the string
         elif type_or_unit == 'url':
@@ -412,7 +469,7 @@ def compute_attr_function(computer, values):
                 attr_value = ('internal', unquote(attr_value[1:]))
             else:
                 attr_value = (
-                    'external', safe_urljoin(computer.base_url, attr_value))
+                    'external', safe_urljoin(computer['base_url'], attr_value))
         elif type_or_unit == 'color':
             attr_value = parse_color(attr_value.strip())
         elif type_or_unit == 'integer':
@@ -441,7 +498,10 @@ def _content_list(computer, values):
         elif value[0] == 'attr()':
             assert value[1][1] == 'string'
             computed_value = compute_attr_function(computer, value)
-        elif value[0] in ('counter()', 'counters()', 'content()', 'string()'):
+        elif value[0] in (
+                'counter()', 'counters()', 'content()', 'element()',
+                'string()',
+        ):
             # Other values need layout context, their computed value cannot be
             # better than their specified value yet.
             # See build.compute_content_list.
@@ -458,12 +518,9 @@ def _content_list(computer, values):
                         (attr,) + value[1][1:]))
             else:
                 computed_value = value
-            if computer.target_collector and computed_value:
-                computer.target_collector.collect_computed_target(
-                    computed_value[1][0])
         if computed_value is None:
             LOGGER.warning('Unable to compute %s\'s value for content: %s' % (
-                computer.element, ', '.join(str(item) for item in value)))
+                computer['element'], ', '.join(str(item) for item in value)))
         else:
             computed_values.append(computed_value)
 
@@ -491,7 +548,7 @@ def content(computer, name, values):
     if len(values) == 1:
         value, = values
         if value == 'normal':
-            return 'inhibit' if computer.pseudo_type else 'contents'
+            return 'inhibit' if computer['pseudo_type'] else 'contents'
         elif value == 'none':
             return 'inhibit'
     return _content_list(computer, values)
@@ -504,10 +561,10 @@ def display(computer, name, value):
     See http://www.w3.org/TR/CSS21/visuren.html#dis-pos-flo
 
     """
-    float_ = computer.specified['float']
-    position = computer.specified['position']
+    float_ = computer['specified']['float']
+    position = computer['specified']['position']
     if position in ('absolute', 'fixed') or float_ != 'none' or \
-            computer.is_root_element:
+            computer['is_root_element']:
         if value == 'inline-table':
             return'table'
         elif value in ('inline', 'table-row-group', 'table-column',
@@ -525,7 +582,7 @@ def compute_float(computer, name, value):
     See http://www.w3.org/TR/CSS21/visuren.html#dis-pos-flo
 
     """
-    if computer.specified['position'] in ('absolute', 'fixed'):
+    if computer['specified']['position'] in ('absolute', 'fixed'):
         return 'none'
     else:
         return value
@@ -536,14 +593,28 @@ def font_size(computer, name, value):
     """Compute the ``font-size`` property."""
     if value in FONT_SIZE_KEYWORDS:
         return FONT_SIZE_KEYWORDS[value]
-    # TODO: support 'larger' and 'smaller'
 
-    parent_font_size = computer.parent_style['font_size']
-    if value.unit == '%':
+    keyword_values = list(FONT_SIZE_KEYWORDS.values())
+    parent_font_size = computer['parent_style']['font_size']
+
+    if value == 'larger':
+        for i, keyword_value in enumerate(keyword_values):
+            if keyword_value > parent_font_size:
+                return keyword_values[i]
+        else:
+            return parent_font_size * 1.2
+    elif value == 'smaller':
+        for i, keyword_value in enumerate(keyword_values[::-1]):
+            if keyword_value < parent_font_size:
+                return keyword_values[-i - 1]
+        else:
+            return parent_font_size * 0.8
+    elif value.unit == '%':
         return value.value * parent_font_size / 100.
     else:
-        return length(computer, name, value, pixels_only=True,
-                      font_size=parent_font_size)
+        return length(
+            computer, name, value, pixels_only=True,
+            font_size=parent_font_size)
 
 
 @register_computer('font-weight')
@@ -554,7 +625,7 @@ def font_weight(computer, name, value):
     elif value == 'bold':
         return 700
     elif value in ('bolder', 'lighter'):
-        parent_value = computer.parent_style['font_weight']
+        parent_value = computer['parent_style']['font_weight']
         return FONT_WEIGHT_RELATIVE[value][parent_value]
     else:
         return value
@@ -569,7 +640,7 @@ def line_height(computer, name, value):
         return ('NUMBER', value.value)
     elif value.unit == '%':
         factor = value.value / 100.
-        font_size_value = computer.computed['font_size']
+        font_size_value = computer['computed']['font_size']
         pixels = factor * font_size_value
     else:
         pixels = length(computer, name, value, pixels_only=True)
@@ -581,8 +652,8 @@ def anchor(computer, name, values):
     """Compute the ``anchor`` property."""
     if values != 'none':
         _, key = values
-        anchor_name = computer.element.get(key) or None
-        computer.target_collector.collect_anchor(anchor_name)
+        anchor_name = computer['element'].get(key) or None
+        computer['target_collector'].collect_anchor(anchor_name)
         return anchor_name
 
 
@@ -595,7 +666,7 @@ def link(computer, name, values):
         type_, value = values
         if type_ == 'attr()':
             return get_link_attribute(
-                computer.element, value, computer.base_url)
+                computer['element'], value, computer['base_url'])
         else:
             return values
 
@@ -608,7 +679,7 @@ def lang(computer, name, values):
     else:
         type_, key = values
         if type_ == 'attr()':
-            return computer.element.get(key) or None
+            return computer['element'].get(key) or None
         elif type_ == 'string':
             return key
 
@@ -642,11 +713,11 @@ def vertical_align(computer, name, value):
                  'top', 'bottom'):
         return value
     elif value == 'super':
-        return computer.computed['font_size'] * 0.5
+        return computer['computed']['font_size'] * 0.5
     elif value == 'sub':
-        return computer.computed['font_size'] * -0.5
+        return computer['computed']['font_size'] * -0.5
     elif value.unit == '%':
-        height, _ = strut_layout(computer.computed)
+        height, _ = strut_layout(computer['computed'])
         return height * value.value / 100.
     else:
         return length(computer, name, value, pixels_only=True)
@@ -680,9 +751,9 @@ def strut_layout(style, context=None):
         if key in context.strut_layouts:
             return context.strut_layouts[key]
 
-    layout = text.Layout(
-        context=context, font_size=style['font_size'], style=style)
-    line, = layout.iter_lines()
+    layout = text.Layout(context, style['font_size'], style)
+    layout.set_text(' ')
+    line, _ = layout.get_first_line()
     _, _, _, _, text_height, baseline = text.first_line_metrics(
         line, '', layout, resume_at=None, space_collapse=False, style=style)
     if style['line_height'] == 'normal':
@@ -705,7 +776,7 @@ def ex_ratio(style):
     # TODO: use context to use @font-face fonts
     layout = text.Layout(context=None, font_size=font_size, style=style)
     layout.set_text('x')
-    line, = layout.iter_lines()
+    line, _ = layout.get_first_line()
     _, ink_height_above_baseline = text.get_ink_position(line)
     # Zero means some kind of failure, fallback is 0.5.
     # We round to try keeping exact values that were altered by Pango.

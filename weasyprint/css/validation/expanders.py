@@ -4,9 +4,6 @@
 
     Validate properties expanders.
 
-    :copyright: Copyright 2011-2018 Simon Sapin and contributors, see AUTHORS.
-    :license: BSD, see LICENSE for details.
-
 """
 
 import functools
@@ -26,6 +23,11 @@ from .properties import (
     other_colors, overflow_wrap, validate_non_shorthand)
 
 EXPANDERS = {}
+
+
+class AutoFakeToken:
+    type = 'ident'
+    lower_value = 'auto'
 
 
 def expander(property_name):
@@ -73,7 +75,7 @@ def expand_four_sides(base_url, name, tokens):
 
 @expander('border-radius')
 def border_radius(base_url, name, tokens):
-    """Validator for the `border-radius` property."""
+    """Validator for the ``border-radius`` property."""
     current = horizontal = []
     vertical = []
     for token in tokens:
@@ -186,14 +188,14 @@ def expand_list_style(name, tokens, base_url):
             none_token = token
             continue
 
-        if list_style_type([token]) is not None:
-            suffix = '-type'
-            type_specified = True
-        elif list_style_position([token]) is not None:
-            suffix = '-position'
-        elif list_style_image([token], base_url) is not None:
+        if list_style_image([token], base_url) is not None:
             suffix = '-image'
             image_specified = True
+        elif list_style_position([token]) is not None:
+            suffix = '-position'
+        elif list_style_type([token]) is not None:
+            suffix = '-type'
+            type_specified = True
         else:
             raise InvalidValues
         yield suffix, [token]
@@ -321,8 +323,8 @@ def expand_background(base_url, name, tokens):
                 if add('clip', box.single_value(next_token)):
                     tokens.pop()
                 else:
-                    # The same keyword sets both:
-                    assert add('clip', box.single_value(token))
+                    # The same keyword sets both
+                    add('clip', box.single_value(token))
                 continue
             raise InvalidValues
 
@@ -345,6 +347,44 @@ def expand_background(base_url, name, tokens):
     yield 'background-color', color
 
 
+@expander('text-decoration')
+def expand_text_decoration(base_url, name, tokens):
+    """Expand the ``text-decoration`` shorthand property."""
+    text_decoration_line = set()
+    text_decoration_color = None
+    text_decoration_style = None
+
+    for token in tokens:
+        keyword = get_keyword(token)
+        if keyword in (
+                'none', 'underline', 'overline', 'line-through', 'blink'):
+            text_decoration_line.add(keyword)
+        elif keyword in ('solid', 'double', 'dotted', 'dashed', 'wavy'):
+            if text_decoration_style is not None:
+                raise InvalidValues
+            else:
+                text_decoration_style = keyword
+        else:
+            color = parse_color(token)
+            if color is None:
+                raise InvalidValues
+            elif text_decoration_color is not None:
+                raise InvalidValues
+            else:
+                text_decoration_color = color
+
+    if 'none' in text_decoration_line:
+        if len(text_decoration_line) != 1:
+            raise InvalidValues
+        text_decoration_line = 'none'
+    elif not text_decoration_line:
+        text_decoration_line = 'none'
+
+    yield 'text_decoration_line', text_decoration_line
+    yield 'text_decoration_color', text_decoration_color or 'currentColor'
+    yield 'text_decoration_style', text_decoration_style or 'solid'
+
+
 @expander('page-break-after')
 @expander('page-break-before')
 def expand_page_break_before_after(base_url, name, tokens):
@@ -359,6 +399,8 @@ def expand_page_break_before_after(base_url, name, tokens):
         yield new_name, keyword
     elif keyword == 'always':
         yield new_name, 'page'
+    else:
+        raise InvalidValues
 
 
 @expander('page-break-inside')
@@ -371,6 +413,8 @@ def expand_page_break_inside(base_url, name, tokens):
     keyword = get_single_keyword(tokens)
     if keyword in ('auto', 'avoid'):
         yield 'break-inside', keyword
+    else:
+        raise InvalidValues
 
 
 @expander('columns')
@@ -388,6 +432,9 @@ def expand_columns(name, tokens):
         else:
             raise InvalidValues
         yield name, [token]
+    if len(tokens) == 1:
+        name = 'column-width' if name == 'column-count' else 'column-count'
+        yield name, [AutoFakeToken()]
 
 
 @expander('font-variant')
@@ -418,14 +465,13 @@ def expand_font(name, tokens):
 
     # Make `tokens` a stack
     tokens = list(reversed(tokens))
-    # Values for font-style font-variant and font-weight can come in any
-    # order and are all optional.
-    while tokens:
+    # Values for font-style, font-variant-caps, font-weight and font-stretch
+    # can come in any order and are all optional.
+    for _ in range(4):
         token = tokens.pop()
         if get_keyword(token) == 'normal':
             # Just ignore 'normal' keywords. Unspecified properties will get
-            # their initial token, which is 'normal' for all three here.
-            # TODO: fail if there is too many 'normal' values?
+            # their initial token, which is 'normal' for all four here.
             continue
 
         if font_style([token]) is not None:
@@ -437,9 +483,16 @@ def expand_font(name, tokens):
         elif font_stretch([token]) is not None:
             suffix = '-stretch'
         else:
-            # We’re done with these three, continue with font-size
+            # We’re done with these four, continue with font-size
             break
         yield suffix, [token]
+
+        if not tokens:
+            raise InvalidValues
+    else:
+        if not tokens:
+            raise InvalidValues
+        token = tokens.pop()
 
     # Then font-size is mandatory
     # Latest `token` from the loop.

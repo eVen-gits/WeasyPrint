@@ -4,9 +4,6 @@
 
     Tests for blocks layout.
 
-    :copyright: Copyright 2011-2018 Simon Sapin and contributors, see AUTHORS.
-    :license: BSD, see LICENSE for details.
-
 """
 
 import pytest
@@ -260,20 +257,26 @@ def test_block_percentage_heights():
 
 
 @assert_no_logs
-def test_box_sizing():
+@pytest.mark.parametrize('size', (
+    ('width: 10%; height: 1000px',),
+    ('max-width: 10%; max-height: 1000px; height: 2000px',),
+    ('width: 5%; min-width: 10%; min-height: 1000px',),
+    ('width: 10%; height: 1000px; min-width: auto; max-height: none',),
+))
+def test_box_sizing(size):
     # http://www.w3.org/TR/css3-ui/#box-sizing
     page, = parse('''
       <style>
         @page { size: 100000px }
         body { width: 10000px; margin: 0 }
-        div { width: 10%; height: 1000px;
-              margin: 100px; padding: 10px; border: 1px solid }
+        div { %s; margin: 100px; padding: 10px; border: 1px solid }
       </style>
       <div></div>
+
       <div style="box-sizing: content-box"></div>
       <div style="box-sizing: padding-box"></div>
       <div style="box-sizing: border-box"></div>
-    ''')
+    ''' % size)
     html, = page.children
     body, = html.children
     div_1, div_2, div_3, div_4 = body.children
@@ -307,6 +310,39 @@ def test_box_sizing():
     assert div_4.border_width() == 1000
     assert div_4.border_height() == 1000
     assert div_4.margin_height() == 1200
+
+
+@assert_no_logs
+@pytest.mark.parametrize('size', (
+    ('width: 0; height: 0'),
+    ('max-width: 0; max-height: 0'),
+    ('min-width: 0; min-height: 0; width: 0; height: 0'),
+))
+def test_box_sizing_zero(size):
+    # http://www.w3.org/TR/css3-ui/#box-sizing
+    page, = parse('''
+      <style>
+        @page { size: 100000px }
+        body { width: 10000px; margin: 0 }
+        div { %s; margin: 100px; padding: 10px; border: 1px solid }
+      </style>
+      <div></div>
+
+      <div style="box-sizing: content-box"></div>
+      <div style="box-sizing: padding-box"></div>
+      <div style="box-sizing: border-box"></div>
+    ''' % size)
+    html, = page.children
+    body, = html.children
+    for div in body.children:
+        assert div.width == 0
+        assert div.height == 0
+        assert div.padding_width() == 20
+        assert div.padding_height() == 20
+        assert div.border_width() == 22
+        assert div.border_height() == 22
+        assert div.margin_height() == 222
+        # margin_width() is the width of the containing block
 
 
 COLLAPSING = (
@@ -535,50 +571,207 @@ def test_vertical_space_9(margin_1, margin_2, result):
 
 
 @assert_no_logs
-def test_box_decoration_break():
+def test_box_decoration_break_block_slice():
     # http://www.w3.org/TR/css3-background/#the-box-decoration-break
-    # Property not implemented yet, always "slice".
     page_1, page_2 = parse('''
       <style>
         @page { size: 100px }
         p { padding: 2px; border: 3px solid; margin: 5px }
-        img { height: 40px; vertical-align: top }
+        img { display: block; height: 40px }
       </style>
       <p>
-        <img src=pattern.png><br>
-        <img src=pattern.png><br>
-        <img src=pattern.png><br>
-        <img src=pattern.png><br>''')
+        <img src=pattern.png>
+        <img src=pattern.png>
+        <img src=pattern.png>
+        <img src=pattern.png>''')
     html, = page_1.children
     body, = html.children
     paragraph, = body.children
-    line_1, line_2 = paragraph.children
+    img_1, img_2 = paragraph.children
     assert paragraph.position_y == 0
     assert paragraph.margin_top == 5
     assert paragraph.border_top_width == 3
     assert paragraph.padding_top == 2
     assert paragraph.content_box_y() == 10
-    assert line_1.position_y == 10
-    assert line_2.position_y == 50
-    assert paragraph.height == 80
+    assert img_1.position_y == 10
+    assert img_2.position_y == 50
+    assert paragraph.height == 90
     assert paragraph.margin_bottom == 0
     assert paragraph.border_bottom_width == 0
     assert paragraph.padding_bottom == 0
-    assert paragraph.margin_height() == 90
+    assert paragraph.margin_height() == 100
 
     html, = page_2.children
     body, = html.children
     paragraph, = body.children
-    line_1, line_2 = paragraph.children
+    img_1, img_2 = paragraph.children
     assert paragraph.position_y == 0
     assert paragraph.margin_top == 0
     assert paragraph.border_top_width == 0
     assert paragraph.padding_top == 0
     assert paragraph.content_box_y() == 0
-    assert line_1.position_y == 0
-    assert line_2.position_y == 40
+    assert img_1.position_y == 0
+    assert img_2.position_y == 40
     assert paragraph.height == 80
     assert paragraph.padding_bottom == 2
     assert paragraph.border_bottom_width == 3
     assert paragraph.margin_bottom == 5
     assert paragraph.margin_height() == 90
+
+
+@assert_no_logs
+def test_box_decoration_break_block_clone():
+    # http://www.w3.org/TR/css3-background/#the-box-decoration-break
+    page_1, page_2 = parse('''
+      <style>
+        @page { size: 100px }
+        p { padding: 2px; border: 3px solid; margin: 5px;
+            box-decoration-break: clone }
+        img { display: block; height: 40px }
+      </style>
+      <p>
+        <img src=pattern.png>
+        <img src=pattern.png>
+        <img src=pattern.png>
+        <img src=pattern.png>''')
+    html, = page_1.children
+    body, = html.children
+    paragraph, = body.children
+    img_1, img_2 = paragraph.children
+    assert paragraph.position_y == 0
+    assert paragraph.margin_top == 5
+    assert paragraph.border_top_width == 3
+    assert paragraph.padding_top == 2
+    assert paragraph.content_box_y() == 10
+    assert img_1.position_y == 10
+    assert img_2.position_y == 50
+    assert paragraph.height == 80
+    # TODO: bottom margin should be 0
+    # https://www.w3.org/TR/css-break-3/#valdef-box-decoration-break-clone
+    # "Cloned margins are truncated on block-level boxes."
+    # See https://github.com/Kozea/WeasyPrint/issues/115
+    assert paragraph.margin_bottom == 5
+    assert paragraph.border_bottom_width == 3
+    assert paragraph.padding_bottom == 2
+    assert paragraph.margin_height() == 100
+
+    html, = page_2.children
+    body, = html.children
+    paragraph, = body.children
+    img_1, img_2 = paragraph.children
+    assert paragraph.position_y == 0
+    assert paragraph.margin_top == 0
+    assert paragraph.border_top_width == 3
+    assert paragraph.padding_top == 2
+    assert paragraph.content_box_y() == 5
+    assert img_1.position_y == 5
+    assert img_2.position_y == 45
+    assert paragraph.height == 80
+    assert paragraph.padding_bottom == 2
+    assert paragraph.border_bottom_width == 3
+    assert paragraph.margin_bottom == 5
+    assert paragraph.margin_height() == 95
+
+
+@assert_no_logs
+def test_box_decoration_break_clone_bottom_padding():
+    page_1, page_2 = parse('''
+      <style>
+        @page { size: 80px; margin: 0 }
+        div { height: 20px }
+        article { padding: 12px; box-decoration-break: clone }
+      </style>
+      <article>
+        <div>a</div>
+        <div>b</div>
+        <div>c</div>
+      </article>''')
+    html, = page_1.children
+    body, = html.children
+    article, = body.children
+    assert article.height == 80 - 2 * 12
+    div_1, div_2 = article.children
+    assert div_1.position_y == 12
+    assert div_2.position_y == 12 + 20
+
+    html, = page_2.children
+    body, = html.children
+    article, = body.children
+    assert article.height == 20
+    div, = article.children
+    assert div.position_y == 12
+
+
+@pytest.mark.xfail
+@assert_no_logs
+def test_box_decoration_break_slice_bottom_padding():  # pragma: no cover
+    # Last div fits in first, but not article's padding. As it is impossible to
+    # break between a parent and its last child, put last child on next page.
+    # TODO: at the end of block_container_layout, we should check that the box
+    # with its bottom border/padding doesn't cross the bottom line. If it does,
+    # we should re-render the box with a max_position_y including the bottom
+    # border/padding.
+    page_1, page_2 = parse('''
+      <style>
+        @page { size: 80px; margin: 0 }
+        div { height: 20px }
+        article { padding: 12px; box-decoration-break: slice }
+      </style>
+      <article>
+        <div>a</div>
+        <div>b</div>
+        <div>c</div>
+      </article>''')
+    html, = page_1.children
+    body, = html.children
+    article, = body.children
+    assert article.height == 80 - 12
+    div_1, div_2 = article.children
+    assert div_1.position_y == 12
+    assert div_2.position_y == 12 + 20
+
+    html, = page_2.children
+    body, = html.children
+    article, = body.children
+    assert article.height == 20
+    div, = article.children
+    assert div.position_y == 0
+
+
+@assert_no_logs
+def test_overflow_auto():
+    page, = parse('''
+      <article style="overflow: auto">
+        <div style="float: left; height: 50px; margin: 10px">bla bla bla</div>
+          toto toto''')
+    html, = page.children
+    body, = html.children
+    article, = body.children
+    assert article.height == 50 + 10 + 10
+
+
+@assert_no_logs
+def test_box_margin_top_repagination():
+    # Test regression: https://github.com/Kozea/WeasyPrint/issues/943
+    page_1, page_2 = parse('''
+      <style>
+        @page { size: 50px }
+        :root { line-height: 1; font-size: 10px }
+        a::before { content: target-counter(attr(href), page) }
+        div { margin: 20px 0 0; background: yellow }
+      </style>
+      <p><a href="#title"></a></p>
+      <div>1<br/>1<br/>2<br/>2</div>
+      <h1 id="title">title</h1>
+    ''')
+    html, = page_1.children
+    body, = html.children
+    p, div = body.children
+    assert div.margin_top == 20
+    assert div.padding_box_y() == 10 + 20
+
+    html, = page_2.children
+    body, = html.children
+    div, h1 = body.children
+    assert div.margin_top == 0
+    assert div.padding_box_y() == 0

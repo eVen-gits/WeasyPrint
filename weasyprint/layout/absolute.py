@@ -2,20 +2,16 @@
     weasyprint.absolute
     -------------------
 
-    :copyright: Copyright 2011-2014 Simon Sapin and contributors, see AUTHORS.
-    :license: BSD, see LICENSE for details.
-
 """
 
 from ..formatting_structure import boxes
-from .markers import list_marker_layout
 from .min_max import handle_min_max_width
 from .percentages import resolve_percentages, resolve_position_percentages
 from .preferred import shrink_to_fit
 from .tables import table_wrapper_width
 
 
-class AbsolutePlaceholder(object):
+class AbsolutePlaceholder:
     """Left where an absolutely-positioned box was taken out of the flow."""
     def __init__(self, box):
         assert not isinstance(box, AbsolutePlaceholder)
@@ -207,14 +203,10 @@ def absolute_block(context, box, containing_block, fixed_boxes):
     # avoid a circular import
     from .blocks import block_container_layout
 
-    # TODO: remove device_size everywhere else
     new_box, _, _, _, _ = block_container_layout(
         context, box, max_position_y=float('inf'), skip_stack=None,
-        device_size=None, page_is_empty=False,
-        absolute_boxes=absolute_boxes, fixed_boxes=fixed_boxes,
-        adjoining_margins=None)
-
-    list_marker_layout(context, new_box)
+        page_is_empty=False, absolute_boxes=absolute_boxes,
+        fixed_boxes=fixed_boxes, adjoining_margins=None)
 
     for child_placeholder in absolute_boxes:
         absolute_layout(context, child_placeholder, new_box, fixed_boxes)
@@ -250,14 +242,10 @@ def absolute_flex(context, box, containing_block_sizes, fixed_boxes,
     if box.is_table_wrapper:
         table_wrapper_width(context, box, (cb_width, cb_height))
 
-    # TODO: remove device_size everywhere else
     new_box, _, _, _, _ = flex_layout(
         context, box, max_position_y=float('inf'), skip_stack=None,
-        containing_block=containing_block, device_size=None,
-        page_is_empty=False, absolute_boxes=absolute_boxes,
-        fixed_boxes=fixed_boxes)
-
-    list_marker_layout(context, new_box)
+        containing_block=containing_block, page_is_empty=False,
+        absolute_boxes=absolute_boxes, fixed_boxes=fixed_boxes)
 
     for child_placeholder in absolute_boxes:
         absolute_layout(context, child_placeholder, new_box, fixed_boxes)
@@ -316,7 +304,7 @@ def absolute_box_layout(context, box, containing_block, fixed_boxes):
 def absolute_replaced(context, box, containing_block):
     # avoid a circular import
     from .inlines import inline_replaced_box_width_height
-    inline_replaced_box_width_height(box, device_size=None)
+    inline_replaced_box_width_height(box, containing_block)
 
     cb_x, cb_y, cb_width, cb_height = containing_block
     ltr = box.style['direction'] == 'ltr'

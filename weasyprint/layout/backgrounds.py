@@ -2,17 +2,14 @@
     weasyprint.backgrounds
     ----------------------
 
-    :copyright: Copyright 2011-2014 Simon Sapin and contributors, see AUTHORS.
-    :license: BSD, see LICENSE for details.
-
 """
 
 from collections import namedtuple
 from itertools import cycle
 
-from . import replaced
 from ..formatting_structure import boxes
-from .percentages import resolve_radii_percentages
+from . import replaced
+from .percentages import percentage, resolve_radii_percentages
 
 Background = namedtuple('Background', 'color, layers, image_rendering')
 BackgroundLayer = namedtuple(
@@ -46,17 +43,21 @@ def box_rectangle(box, which_rectangle):
         )
 
 
-def layout_box_backgrounds(page, box, get_image_from_uri):
+def layout_box_backgrounds(page, box, get_image_from_uri, layout_children=True,
+                           style=None):
     """Fetch and position background images."""
     from ..draw import get_color
 
     # Resolve percentages in border-radius properties
     resolve_radii_percentages(box)
 
-    for child in box.all_children():
-        layout_box_backgrounds(page, child, get_image_from_uri)
+    if layout_children:
+        for child in box.all_children():
+            layout_box_backgrounds(page, child, get_image_from_uri)
 
-    style = box.style
+    if style is None:
+        style = box.style
+
     if style['visibility'] == 'hidden':
         box.background = None
         if page != box:  # Pages need a background for bleed box
@@ -81,17 +82,6 @@ def layout_box_backgrounds(page, box, get_image_from_uri):
             style['background_attachment']]))]
     box.background = Background(
         color=color, image_rendering=style['image_rendering'], layers=layers)
-
-
-def percentage(value, refer_to):
-    """Return the evaluated percentage value, or the value unchanged."""
-    if value == 'auto':
-        return value
-    elif value.unit == 'px':
-        return value.value
-    else:
-        assert value.unit == '%'
-        return refer_to * value.value / 100
 
 
 def layout_background_layer(box, page, resolution, image, size, clip, repeat,
@@ -131,12 +121,12 @@ def layout_background_layer(box, page, resolution, image, size, clip, repeat,
         cells = box.get_cells()
         if cells:
             clipped_boxes = [cell.rounded_border_box() for cell in cells]
+            min_x = min(cell.border_box_x() for cell in cells)
             max_x = max(
                 cell.border_box_x() + cell.border_width()
                 for cell in cells)
             painting_area = [
-                box.border_box_x(), box.border_box_y(),
-                max_x - box.border_box_x(),
+                min_x, box.border_box_y(), max_x - min_x,
                 box.border_box_y() + box.border_height()]
     else:
         painting_area = box_rectangle(box, clip)
@@ -150,7 +140,7 @@ def layout_background_layer(box, page, resolution, image, size, clip, repeat,
 
     if image is None or 0 in image.get_intrinsic_size(1, 1):
         return BackgroundLayer(
-            image=None, unbounded=(box is page), painting_area=painting_area,
+            image=None, unbounded=False, painting_area=painting_area,
             size='unused', position='unused', repeat='unused',
             positioning_area='unused', clipped_boxes=clipped_boxes)
 
@@ -213,14 +203,14 @@ def layout_background_layer(box, page, resolution, image, size, clip, repeat,
         size=(image_width, image_height),
         position=(position_x, position_y),
         repeat=repeat,
-        unbounded=(box is page),
+        unbounded=False,
         painting_area=painting_area,
         positioning_area=positioning_area,
         clipped_boxes=clipped_boxes)
 
 
-def set_canvas_background(page):
-    """Set a ``canvas_background`` attribute on the PageBox,
+def set_canvas_background(page, get_image_from_uri):
+    """Set a ``background`` attribute on the PageBox,
     with style for the canvas background, taken from the root elememt
     or a <body> child of the root element.
 
@@ -238,11 +228,16 @@ def set_canvas_background(page):
 
     if chosen_box.background:
         painting_area = box_rectangle(page, 'padding-box')
-        page.canvas_background = chosen_box.background._replace(
+        original_background = page.background
+        layout_box_backgrounds(
+            page, page, get_image_from_uri, layout_children=False,
+            style=chosen_box.style)
+        page.canvas_background = page.background._replace(
             # TODO: shouldn’t background-clip be considered here?
             layers=[
-                l._replace(painting_area=painting_area)
-                for l in chosen_box.background.layers])
+                layer._replace(painting_area=painting_area)
+                for layer in page.background.layers])
+        page.background = original_background
         chosen_box.background = None
     else:
         page.canvas_background = None
@@ -250,4 +245,4 @@ def set_canvas_background(page):
 
 def layout_backgrounds(page, get_image_from_uri):
     layout_box_backgrounds(page, page, get_image_from_uri)
-    set_canvas_background(page)
+    set_canvas_background(page, get_image_from_uri)

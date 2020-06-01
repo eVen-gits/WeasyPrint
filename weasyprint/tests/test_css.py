@@ -3,11 +3,9 @@
     -------------------------
 
     Test the CSS parsing, cascade, inherited and computed values.
-
-    :copyright: Copyright 2011-2014 Simon Sapin and contributors, see AUTHORS.
-    :license: BSD, see LICENSE for details.
-
 """
+
+from math import isclose
 
 import pytest
 import tinycss2
@@ -36,7 +34,7 @@ def test_find_stylesheets():
 
     sheets = list(css.find_stylesheets(
         html.wrapper_element, 'print', default_url_fetcher, html.base_url,
-        font_config=None, page_rules=None))
+        font_config=None, counter_style=None, page_rules=None))
     assert len(sheets) == 2
     # Also test that stylesheets are in tree order
     assert [s.base_url.rsplit('/', 1)[-1].rsplit(',', 1)[-1] for s in sheets] \
@@ -80,10 +78,10 @@ def test_expand_shorthands():
 def test_annotate_document():
     document = FakeHTML(resource_filename('doc1.html'))
     document._ua_stylesheets = lambda: [CSS(resource_filename('mini_ua.css'))]
-    style_for, _, _ = get_all_computed_styles(
+    style_for = get_all_computed_styles(
         document, user_stylesheets=[CSS(resource_filename('user.css'))])
 
-    # Element objects behave a lists of their children
+    # Element objects behave as lists of their children
     _head, body = document.etree_element
     h1, p, ul, div = body
     li_0, _li_1 = ul
@@ -136,7 +134,7 @@ def test_annotate_document():
     assert li_0['margin_bottom'] == (16, 'px')
     assert li_0['margin_left'] == (32, 'px')  # 4em
 
-    assert a['text_decoration'] == frozenset(['underline'])
+    assert a['text_decoration_line'] == {'underline'}
     assert a['font_weight'] == 900
     assert a['font_size'] == 24  # 300% of 8px
     assert a['padding_top'] == (1, 'px')
@@ -161,14 +159,14 @@ def test_annotate_document():
     assert after['border_top_width'] == 42
     assert after['border_bottom_width'] == 3
 
-    # TODO much more tests here: test that origin and selector precedence
-    # and inheritance are correct, ...
+    # TODO: much more tests here: test that origin and selector precedence
+    # and inheritance are correct…
 
 
 @assert_no_logs
 def test_page():
     document = FakeHTML(resource_filename('doc1.html'))
-    style_for, cascaded_styles, computed_styles = get_all_computed_styles(
+    style_for = get_all_computed_styles(
         document, user_stylesheets=[CSS(string='''
           html { color: red }
           @page { margin: 10px }
@@ -181,81 +179,108 @@ def test_page():
           }
         ''')])
 
-    # Force the generation of the style for all possible page types and
-    # pseudo-types, as it's generally only done during the rendering for needed
-    # page types.
-    standard_page_type = PageType(
-        side=None, blank=False, first=False, name=None)
-    set_page_type_computed_styles(
-        standard_page_type, cascaded_styles, computed_styles, document)
-
-    style = style_for(
-        PageType(side='left', first=True, blank=False, name=None))
+    page_type = PageType(
+        side='left', first=True, blank=False, index=0, name='')
+    set_page_type_computed_styles(page_type, document, style_for)
+    style = style_for(page_type)
     assert style['margin_top'] == (5, 'px')
     assert style['margin_left'] == (10, 'px')
     assert style['margin_bottom'] == (10, 'px')
     assert style['color'] == (1, 0, 0, 1)  # red, inherited from html
 
-    style = style_for(
-        PageType(side='right', first=True, blank=False, name=None))
+    page_type = PageType(
+        side='right', first=True, blank=False, index=0, name='')
+    set_page_type_computed_styles(page_type, document, style_for)
+    style = style_for(page_type)
     assert style['margin_top'] == (5, 'px')
     assert style['margin_left'] == (10, 'px')
     assert style['margin_bottom'] == (16, 'px')
     assert style['color'] == (0, 0, 1, 1)  # blue
 
-    style = style_for(
-        PageType(side='left', first=False, blank=False, name=None))
+    page_type = PageType(
+        side='left', first=False, blank=False, index=1, name='')
+    set_page_type_computed_styles(page_type, document, style_for)
+    style = style_for(page_type)
     assert style['margin_top'] == (10, 'px')
     assert style['margin_left'] == (10, 'px')
     assert style['margin_bottom'] == (10, 'px')
     assert style['color'] == (1, 0, 0, 1)  # red, inherited from html
 
-    style = style_for(
-        PageType(side='right', first=False, blank=False, name=None))
+    page_type = PageType(
+        side='right', first=False, blank=False, index=1, name='')
+    set_page_type_computed_styles(page_type, document, style_for)
+    style = style_for(page_type)
     assert style['margin_top'] == (10, 'px')
     assert style['margin_left'] == (10, 'px')
     assert style['margin_bottom'] == (16, 'px')
     assert style['color'] == (0, 0, 1, 1)  # blue
 
-    style = style_for(
-        PageType(side='left', first=True, blank=False, name=None),
-        '@top-left')
+    page_type = PageType(
+        side='left', first=True, blank=False, index=0, name='')
+    set_page_type_computed_styles(page_type, document, style_for)
+    style = style_for(page_type, '@top-left')
     assert style is None
 
-    style = style_for(
-        PageType(side='right', first=True, blank=False, name=None),
-        '@top-left')
+    page_type = PageType(
+        side='right', first=True, blank=False, index=0, name='')
+    set_page_type_computed_styles(page_type, document, style_for)
+    style = style_for(page_type, '@top-left')
     assert style['font_size'] == 20  # inherited from @page
     assert style['width'] == (200, 'px')
 
-    style = style_for(
-        PageType(side='right', first=True, blank=False, name=None),
-        '@top-right')
+    page_type = PageType(
+        side='right', first=True, blank=False, index=0, name='')
+    set_page_type_computed_styles(page_type, document, style_for)
+    style = style_for(page_type, '@top-right')
     assert style['font_size'] == 10
 
 
 @assert_no_logs
 @pytest.mark.parametrize('style, selectors', (
     ('@page {}', [{
-        'side': None, 'blank': False, 'first': False, 'name': None,
-        'specificity': [0, 0, 0]}]),
+        'side': None, 'blank': None, 'first': None, 'name': None,
+        'index': None, 'specificity': [0, 0, 0]}]),
     ('@page :left {}', [{
-        'side': 'left', 'blank': False, 'first': False, 'name': None,
-        'specificity': [0, 0, 1]}]),
+        'side': 'left', 'blank': None, 'first': None, 'name': None,
+        'index': None, 'specificity': [0, 0, 1]}]),
     ('@page:first:left {}', [{
-        'side': 'left', 'blank': False, 'first': True, 'name': None,
-        'specificity': [0, 1, 1]}]),
+        'side': 'left', 'blank': None, 'first': True, 'name': None,
+        'index': None, 'specificity': [0, 1, 1]}]),
     ('@page pagename {}', [{
-        'side': None, 'blank': False, 'first': False, 'name': 'pagename',
-        'specificity': [1, 0, 0]}]),
+        'side': None, 'blank': None, 'first': None, 'name': 'pagename',
+        'index': None, 'specificity': [1, 0, 0]}]),
     ('@page pagename:first:right:blank {}', [{
         'side': 'right', 'blank': True, 'first': True, 'name': 'pagename',
-        'specificity': [1, 2, 1]}]),
+        'index': None, 'specificity': [1, 2, 1]}]),
     ('@page pagename, :first {}', [
-        {'side': None, 'blank': False, 'first': False, 'name': 'pagename',
-         'specificity': [1, 0, 0]},
-        {'side': None, 'blank': False, 'first': True, 'name': None,
-         'specificity': [0, 1, 0]}]),
+        {'side': None, 'blank': None, 'first': None, 'name': 'pagename',
+         'index': None, 'specificity': [1, 0, 0]},
+        {'side': None, 'blank': None, 'first': True, 'name': None,
+         'index': None, 'specificity': [0, 1, 0]}]),
+    ('@page :first:first {}', [{
+        'side': None, 'blank': None, 'first': True, 'name': None,
+        'index': None, 'specificity': [0, 2, 0]}]),
+    ('@page :left:left {}', [{
+        'side': 'left', 'blank': None, 'first': None, 'name': None,
+        'index': None, 'specificity': [0, 0, 2]}]),
+    ('@page :nth(2) {}', [{
+        'side': None, 'blank': None, 'first': None, 'name': None,
+        'index': (0, 2, None), 'specificity': [0, 1, 0]}]),
+    ('@page :nth(2n + 4) {}', [{
+        'side': None, 'blank': None, 'first': None, 'name': None,
+        'index': (2, 4, None), 'specificity': [0, 1, 0]}]),
+    ('@page :nth(3n) {}', [{
+        'side': None, 'blank': None, 'first': None, 'name': None,
+        'index': (3, 0, None), 'specificity': [0, 1, 0]}]),
+    ('@page :nth( n+2 ) {}', [{
+        'side': None, 'blank': None, 'first': None, 'name': None,
+        'index': (1, 2, None), 'specificity': [0, 1, 0]}]),
+    ('@page :nth(even) {}', [{
+        'side': None, 'blank': None, 'first': None, 'name': None,
+        'index': (2, 0, None), 'specificity': [0, 1, 0]}]),
+    ('@page pagename:nth(2) {}', [{
+        'side': None, 'blank': None, 'first': None, 'name': 'pagename',
+        'index': (0, 2, None), 'specificity': [1, 1, 0]}]),
     ('@page page page {}', None),
     ('@page :left page {}', None),
     ('@page :left, {}', None),
@@ -263,7 +288,6 @@ def test_page():
     ('@page :left, test, {}', None),
     ('@page :wrong {}', None),
     ('@page :left:wrong {}', None),
-    ('@page :first:first {}', None),
     ('@page :left:right {}', None),
 ))
 def test_page_selectors(style, selectors):
@@ -277,9 +301,9 @@ def test_page_selectors(style, selectors):
     ('::lipsum { margin: 2cm', ['WARNING: Invalid or unsupported selector']),
     ('foo { margin-color: red', ['WARNING: Ignored', 'unknown property']),
     ('foo { margin-top: red', ['WARNING: Ignored', 'invalid value']),
-    ('@import "relative-uri.css',
+    ('@import "relative-uri.css"',
      ['ERROR: Relative URI reference without a base URI']),
-    ('@import "invalid-protocol://absolute-URL',
+    ('@import "invalid-protocol://absolute-URL"',
      ['ERROR: Failed to load stylesheet at']),
 ))
 def test_warnings(source, messages):
@@ -425,3 +449,38 @@ def test_units(value, width):
     body, = html.children
     p, = body.children
     assert p.margin_left == width
+
+
+@assert_no_logs
+@pytest.mark.parametrize('parent_css, parent_size, child_css, child_size', (
+    ('10px', 10, '10px', 10),
+    ('x-small', 12, 'xx-large', 32),
+    ('x-large', 24, '2em', 48),
+    ('1em', 16, '1em', 16),
+    ('1em', 16, 'larger', 6 / 5 * 16),
+    ('medium', 16, 'larger', 6 / 5 * 16),
+    ('x-large', 24, 'larger', 32),
+    ('xx-large', 32, 'larger', 1.2 * 32),
+    ('1px', 1, 'larger', 3 / 5 * 16),
+    ('28px', 28, 'larger', 32),
+    ('100px', 100, 'larger', 120),
+    ('xx-small', 3 / 5 * 16, 'larger', 12),
+    ('1em', 16, 'smaller', 8 / 9 * 16),
+    ('medium', 16, 'smaller', 8 / 9 * 16),
+    ('x-large', 24, 'smaller', 6 / 5 * 16),
+    ('xx-large', 32, 'smaller', 24),
+    ('xx-small', 3 / 5 * 16, 'smaller', 0.8 * 3 / 5 * 16),
+    ('1px', 1, 'smaller', 0.8),
+    ('28px', 28, 'smaller', 24),
+    ('100px', 100, 'smaller', 32),
+))
+def test_font_size(parent_css, parent_size, child_css, child_size):
+    document = FakeHTML(string='<p>a<span>b')
+    style_for = get_all_computed_styles(document, user_stylesheets=[CSS(
+        string='p{font-size:%s}span{font-size:%s}' % (parent_css, child_css))])
+
+    _head, body = document.etree_element
+    p, = body
+    span, = p
+    assert isclose(style_for(p)['font_size'], parent_size)
+    assert isclose(style_for(span)['font_size'], child_size)

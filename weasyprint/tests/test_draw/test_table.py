@@ -4,21 +4,27 @@
 
     Test how tables are drawn.
 
-    :copyright: Copyright 2011-2018 Simon Sapin and contributors, see AUTHORS.
-    :license: BSD, see LICENSE for details.
-
 """
 
-from . import B, R, S, _, as_pixel, assert_pixels, p
+import pytest
+
 from ...html import HTML_HANDLERS
 from ..testing_utils import assert_no_logs, requires
+from . import as_pixel, assert_pixels, parse_pixels
 
-# rgba(255, 0, 0, 0.5) above #fff
-r = as_pixel(b'\xff\x7f\x7f\xff')
-# rgba(0, 255, 0, 0.5) above #fff
-g = as_pixel(b'\x7f\xff\x7f\xff')
-# r above B above #fff.
-b = as_pixel(b'\x80\x00\x7f\xff')
+PIX_BY_CHAR_OVERRIDES = {
+    # rgba(255, 0, 0, 0.5) above #fff
+    'r': as_pixel(b'\xff\x7f\x7f\xff'),
+    # rgba(0, 255, 0, 0.5) above #fff
+    'g': as_pixel(b'\x7f\xff\x7f\xff'),
+    # r above B above #fff.
+    'b': as_pixel(b'\x80\x00\x7f\xff'),
+}
+
+
+def to_pix(pixels_str):
+    return parse_pixels(pixels_str, PIX_BY_CHAR_OVERRIDES)
+
 
 # TODO: refactor colspan/rowspan into CSS:
 # td, th { column-span: attr(colspan integer) }
@@ -61,36 +67,36 @@ tables_source = '''
 @assert_no_logs
 @requires('cairo', (1, 12, 0))
 def test_tables_1():
-    assert_pixels('table_borders', 28, 28, [
-        _+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_,  # noqa
-        _+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+_,  # noqa
-        _+B+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+B+_,  # noqa
-        _+B+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+B+_,  # noqa
-        _+B+_+_+r+r+r+r+r+r+_+r+r+r+r+r+r+_+r+r+r+r+r+r+_+_+B+_,  # noqa
-        _+B+_+_+r+_+_+_+_+r+_+r+_+_+_+_+r+_+r+_+_+_+_+r+_+_+B+_,  # noqa
-        _+B+_+_+r+_+_+_+_+r+_+r+_+_+_+_+r+_+r+_+_+_+_+r+_+_+B+_,  # noqa
-        _+B+_+_+r+_+_+_+_+r+_+r+_+_+_+_+r+_+r+_+_+_+_+r+_+_+B+_,  # noqa
-        _+B+_+_+r+_+_+_+_+r+_+r+_+_+_+_+r+_+r+_+_+_+_+r+_+_+B+_,  # noqa
-        _+B+_+_+r+r+r+r+r+r+_+r+_+_+_+_+r+_+r+r+r+r+r+r+_+_+B+_,  # noqa
-        _+B+_+_+_+_+_+_+_+_+_+r+_+_+_+_+r+_+_+_+_+_+_+_+_+_+B+_,  # noqa
-        _+B+_+_+r+r+r+r+r+r+r+S+r+r+r+r+S+_+r+r+r+r+r+r+_+_+B+_,  # noqa
-        _+B+_+_+r+_+_+_+_+_+_+r+_+_+_+_+S+_+r+_+_+_+_+r+_+_+B+_,  # noqa
-        _+B+_+_+r+_+_+_+_+_+_+r+_+_+_+_+S+_+r+_+_+_+_+r+_+_+B+_,  # noqa
-        _+B+_+_+r+_+_+_+_+_+_+r+_+_+_+_+S+_+r+_+_+_+_+r+_+_+B+_,  # noqa
-        _+B+_+_+r+_+_+_+_+_+_+r+_+_+_+_+S+_+r+_+_+_+_+r+_+_+B+_,  # noqa
-        _+B+_+_+r+r+r+r+r+r+r+S+S+S+S+S+S+_+r+r+r+r+r+r+_+_+B+_,  # noqa
-        _+B+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+B+_,  # noqa
-        _+B+_+_+r+r+r+r+r+r+_+r+r+r+r+r+r+_+_+_+_+_+_+_+_+_+B+_,  # noqa
-        _+B+_+_+r+_+_+_+_+r+_+r+_+_+_+_+r+_+_+_+_+_+_+_+_+_+B+_,  # noqa
-        _+B+_+_+r+_+_+_+_+r+_+r+_+_+_+_+r+_+_+_+_+_+_+_+_+_+B+_,  # noqa
-        _+B+_+_+r+_+_+_+_+r+_+r+_+_+_+_+r+_+_+_+_+_+_+_+_+_+B+_,  # noqa
-        _+B+_+_+r+_+_+_+_+r+_+r+_+_+_+_+r+_+_+_+_+_+_+_+_+_+B+_,  # noqa
-        _+B+_+_+r+r+r+r+r+r+_+r+r+r+r+r+r+_+_+_+_+_+_+_+_+_+B+_,  # noqa
-        _+B+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+B+_,  # noqa
-        _+B+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+B+_,  # noqa
-        _+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+_,  # noqa
-        _+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_,  # noqa
-    ], tables_source % {'extra_css': '''
+    assert_pixels('table_borders', 28, 28, to_pix('''
+        ____________________________
+        _BBBBBBBBBBBBBBBBBBBBBBBBBB_
+        _B________________________B_
+        _B________________________B_
+        _B__rrrrrr_rrrrrr_rrrrrr__B_
+        _B__r____r_r____r_r____r__B_
+        _B__r____r_r____r_r____r__B_
+        _B__r____r_r____r_r____r__B_
+        _B__r____r_r____r_r____r__B_
+        _B__rrrrrr_r____r_rrrrrr__B_
+        _B_________r____r_________B_
+        _B__rrrrrrrSrrrrS_rrrrrr__B_
+        _B__r______r____S_r____r__B_
+        _B__r______r____S_r____r__B_
+        _B__r______r____S_r____r__B_
+        _B__r______r____S_r____r__B_
+        _B__rrrrrrrSSSSSS_rrrrrr__B_
+        _B________________________B_
+        _B__rrrrrr_rrrrrr_________B_
+        _B__r____r_r____r_________B_
+        _B__r____r_r____r_________B_
+        _B__r____r_r____r_________B_
+        _B__r____r_r____r_________B_
+        _B__rrrrrr_rrrrrr_________B_
+        _B________________________B_
+        _B________________________B_
+        _BBBBBBBBBBBBBBBBBBBBBBBBBB_
+        ____________________________
+    '''), tables_source % {'extra_css': '''
       x-table { border-color: #00f; table-layout: fixed }
       x-td { border-color: rgba(255, 0, 0, 0.5) }
     '''})
@@ -98,37 +104,76 @@ def test_tables_1():
 
 @assert_no_logs
 @requires('cairo', (1, 12, 0))
+def test_tables_1_rtl():
+    assert_pixels('table_borders_rtl', 28, 28, to_pix('''
+        ____________________________
+        _BBBBBBBBBBBBBBBBBBBBBBBBBB_
+        _B________________________B_
+        _B________________________B_
+        _B__rrrrrr_rrrrrr_rrrrrr__B_
+        _B__r____r_r____r_r____r__B_
+        _B__r____r_r____r_r____r__B_
+        _B__r____r_r____r_r____r__B_
+        _B__r____r_r____r_r____r__B_
+        _B__rrrrrr_r____r_rrrrrr__B_
+        _B_________r____r_________B_
+        _B__rrrrrr_SrrrrSrrrrrrr__B_
+        _B__r____r_S____r______r__B_
+        _B__r____r_S____r______r__B_
+        _B__r____r_S____r______r__B_
+        _B__r____r_S____r______r__B_
+        _B__rrrrrr_SSSSSSrrrrrrr__B_
+        _B________________________B_
+        _B_________rrrrrr_rrrrrr__B_
+        _B_________r____r_r____r__B_
+        _B_________r____r_r____r__B_
+        _B_________r____r_r____r__B_
+        _B_________r____r_r____r__B_
+        _B_________rrrrrr_rrrrrr__B_
+        _B________________________B_
+        _B________________________B_
+        _BBBBBBBBBBBBBBBBBBBBBBBBBB_
+        ____________________________
+    '''), tables_source % {'extra_css': '''
+      x-table { border-color: #00f; table-layout: fixed;
+                direction: rtl; }
+      x-td { border-color: rgba(255, 0, 0, 0.5) }
+    '''})
+
+
+@assert_no_logs
+@requires('cairo', (1, 12, 0))
 def test_tables_2():
-    assert_pixels('table_collapsed_borders', 28, 28, [
-        _+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_,  # noqa
-        _+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+_+_+_+_+_+_+_+_+_,  # noqa
-        _+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+_+_+_+_+_+_+_+_+_,  # noqa
-        _+B+B+_+_+_+_+r+_+_+_+_+r+_+_+_+_+B+B+_+_+_+_+_+_+_+_+_,  # noqa
-        _+B+B+_+_+_+_+r+_+_+_+_+r+_+_+_+_+B+B+_+_+_+_+_+_+_+_+_,  # noqa
-        _+B+B+_+_+_+_+r+_+_+_+_+r+_+_+_+_+B+B+_+_+_+_+_+_+_+_+_,  # noqa
-        _+B+B+_+_+_+_+r+_+_+_+_+r+_+_+_+_+B+B+_+_+_+_+_+_+_+_+_,  # noqa
-        _+B+B+r+r+r+r+r+_+_+_+_+r+r+r+r+r+B+B+_+_+_+_+_+_+_+_+_,  # noqa
-        _+B+B+_+_+_+_+_+_+_+_+_+r+_+_+_+_+B+B+_+_+_+_+_+_+_+_+_,  # noqa
-        _+B+B+_+_+_+_+_+_+_+_+_+r+_+_+_+_+B+B+_+_+_+_+_+_+_+_+_,  # noqa
-        _+B+B+_+_+_+_+_+_+_+_+_+r+_+_+_+_+B+B+_+_+_+_+_+_+_+_+_,  # noqa
-        _+B+B+_+_+_+_+_+_+_+_+_+r+_+_+_+_+B+B+_+_+_+_+_+_+_+_+_,  # noqa
-        _+B+B+r+r+r+r+r+r+r+r+r+r+r+r+r+r+B+B+_+_+_+_+_+_+_+_+_,  # noqa
-        _+B+B+_+_+_+_+r+_+_+_+_+r+_+_+_+_+B+B+_+_+_+_+_+_+_+_+_,  # noqa
-        _+B+B+_+_+_+_+r+_+_+_+_+r+_+_+_+_+B+B+_+_+_+_+_+_+_+_+_,  # noqa
-        _+B+B+_+_+_+_+r+_+_+_+_+r+_+_+_+_+B+B+_+_+_+_+_+_+_+_+_,  # noqa
-        _+B+B+_+_+_+_+r+_+_+_+_+r+_+_+_+_+B+B+_+_+_+_+_+_+_+_+_,  # noqa
-        _+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+_+_+_+_+_+_+_+_+_,  # noqa
-        _+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+_+_+_+_+_+_+_+_+_,  # noqa
-        _+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_,  # noqa
-        _+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_,  # noqa
-        _+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_,  # noqa
-        _+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_,  # noqa
-        _+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_,  # noqa
-        _+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_,  # noqa
-        _+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_,  # noqa
-        _+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_,  # noqa
-        _+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_,  # noqa
-    ], tables_source % {'extra_css': '''
+    assert_pixels('table_collapsed_borders', 28, 28, to_pix('''
+        ____________________________
+        _BBBBBBBBBBBBBBBBBB_________
+        _BBBBBBBBBBBBBBBBBB_________
+        _BB____r____r____BB_________
+        _BB____r____r____BB_________
+        _BB____r____r____BB_________
+        _BB____r____r____BB_________
+        _BBrrrrr____rrrrrBB_________
+        _BB_________r____BB_________
+        _BB_________r____BB_________
+        _BB_________r____BB_________
+        _BB_________r____BB_________
+        _BBrrrrrrrrrrrrrrBB_________
+        _BB____r____r____BB_________
+        _BB____r____r____BB_________
+        _BB____r____r____BB_________
+        _BB____r____r____BB_________
+        _BBBBBBBBBBBBBBBBBB_________
+        _BBBBBBBBBBBBBBBBBB_________
+        ____________________________
+        ____________________________
+        ____________________________
+        ____________________________
+        ____________________________
+        ____________________________
+        ____________________________
+        ____________________________
+        ____________________________
+    '''), tables_source % {'extra_css': '''
       x-table { border: 2px solid #00f; table-layout: fixed;
                 border-collapse: collapse }
       x-td { border-color: #ff7f7f }
@@ -137,61 +182,101 @@ def test_tables_2():
 
 @assert_no_logs
 @requires('cairo', (1, 12, 0))
+def test_tables_2_rtl():
+    assert_pixels('table_collapsed_borders_rtl', 28, 28, to_pix('''
+        ____________________________
+        _________BBBBBBBBBBBBBBBBBB_
+        _________BBBBBBBBBBBBBBBBBB_
+        _________BB____r____r____BB_
+        _________BB____r____r____BB_
+        _________BB____r____r____BB_
+        _________BB____r____r____BB_
+        _________BBrrrrr____rrrrrBB_
+        _________BB____r_________BB_
+        _________BB____r_________BB_
+        _________BB____r_________BB_
+        _________BB____r_________BB_
+        _________BBrrrrrrrrrrrrrrBB_
+        _________BB____r____r____BB_
+        _________BB____r____r____BB_
+        _________BB____r____r____BB_
+        _________BB____r____r____BB_
+        _________BBBBBBBBBBBBBBBBBB_
+        _________BBBBBBBBBBBBBBBBBB_
+        ____________________________
+        ____________________________
+        ____________________________
+        ____________________________
+        ____________________________
+        ____________________________
+        ____________________________
+        ____________________________
+        ____________________________
+    '''), tables_source % {'extra_css': '''
+      body { direction: rtl; }
+      x-table { border: 2px solid #00f; table-layout: fixed;
+                border-collapse: collapse; }
+      x-td { border-color: #ff7f7f }
+    '''})
+
+
+@assert_no_logs
+@requires('cairo', (1, 12, 0))
 def test_tables_3():
-    assert_pixels('table_collapsed_borders_paged', 28, 52, [
-        _+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_,  # noqa
-        _+g+g+g+g+g+g+g+g+g+g+g+g+g+g+g+g+g+g+g+g+g+g+g+g+g+g+_,  # noqa
-        _+g+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+g+_,  # noqa
-        _+g+_+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+_+_+_+_+_+g+_,  # noqa
-        _+g+_+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+_+_+_+_+_+g+_,  # noqa
-        _+g+_+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+_+_+_+_+_+g+_,  # noqa
-        _+g+_+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+_+_+_+_+_+g+_,  # noqa
-        _+g+_+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+_+_+_+_+_+g+_,  # noqa
-        _+g+_+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+_+_+_+_+_+g+_,  # noqa
-        _+g+_+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+_+_+_+_+_+g+_,  # noqa
-        _+g+_+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+_+_+_+_+_+g+_,  # noqa
-        _+g+_+B+B+_+_+_+_+r+_+_+_+_+r+_+_+_+_+B+B+_+_+_+_+_+g+_,  # noqa
-        _+g+_+B+B+_+_+_+_+r+_+_+_+_+r+_+_+_+_+B+B+_+_+_+_+_+g+_,  # noqa
-        _+g+_+B+B+_+_+_+_+r+_+_+_+_+r+_+_+_+_+B+B+_+_+_+_+_+g+_,  # noqa
-        _+g+_+B+B+_+_+_+_+r+_+_+_+_+r+_+_+_+_+B+B+_+_+_+_+_+g+_,  # noqa
-        _+g+_+B+B+r+r+r+r+r+_+_+_+_+r+r+r+r+r+B+B+_+_+_+_+_+g+_,  # noqa
-        _+g+_+B+B+_+_+_+_+_+_+_+_+_+r+_+_+_+_+B+B+_+_+_+_+_+g+_,  # noqa
-        _+g+_+B+B+_+_+_+_+_+_+_+_+_+r+_+_+_+_+B+B+_+_+_+_+_+g+_,  # noqa
-        _+g+_+B+B+_+_+_+_+_+_+_+_+_+r+_+_+_+_+B+B+_+_+_+_+_+g+_,  # noqa
-        _+g+_+B+B+_+_+_+_+_+_+_+_+_+r+_+_+_+_+B+B+_+_+_+_+_+g+_,  # noqa
-        _+g+_+B+B+r+r+r+r+r+r+r+r+r+r+r+r+r+r+B+B+_+_+_+_+_+g+_,  # noqa
-        _+g+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+g+_,  # noqa
-        _+g+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+g+_,  # noqa
-        _+g+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+g+_,  # noqa
-        _+g+g+g+g+g+g+g+g+g+g+g+g+g+g+g+g+g+g+g+g+g+g+g+g+g+g+_,  # noqa
-        _+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_,  # noqa
-        _+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_,  # noqa
-        _+g+g+g+g+g+g+g+g+g+g+g+g+g+g+g+g+g+g+g+g+g+g+g+g+g+g+_,  # noqa
-        _+g+_+B+B+r+r+r+r+r+r+r+r+r+r+r+r+r+r+B+B+_+_+_+_+_+g+_,  # noqa
-        _+g+_+B+B+_+_+_+_+r+_+_+_+_+r+_+_+_+_+B+B+_+_+_+_+_+g+_,  # noqa
-        _+g+_+B+B+_+_+_+_+r+_+_+_+_+r+_+_+_+_+B+B+_+_+_+_+_+g+_,  # noqa
-        _+g+_+B+B+_+_+_+_+r+_+_+_+_+r+_+_+_+_+B+B+_+_+_+_+_+g+_,  # noqa
-        _+g+_+B+B+_+_+_+_+r+_+_+_+_+r+_+_+_+_+B+B+_+_+_+_+_+g+_,  # noqa
-        _+g+_+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+_+_+_+_+_+g+_,  # noqa
-        _+g+_+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+_+_+_+_+_+g+_,  # noqa
-        _+g+_+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+_+_+_+_+_+g+_,  # noqa
-        _+g+_+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+_+_+_+_+_+g+_,  # noqa
-        _+g+_+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+_+_+_+_+_+g+_,  # noqa
-        _+g+_+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+_+_+_+_+_+g+_,  # noqa
-        _+g+_+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+_+_+_+_+_+g+_,  # noqa
-        _+g+_+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+_+_+_+_+_+g+_,  # noqa
-        _+g+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+g+_,  # noqa
-        _+g+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+g+_,  # noqa
-        _+g+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+g+_,  # noqa
-        _+g+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+g+_,  # noqa
-        _+g+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+g+_,  # noqa
-        _+g+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+g+_,  # noqa
-        _+g+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+g+_,  # noqa
-        _+g+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+g+_,  # noqa
-        _+g+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+g+_,  # noqa
-        _+g+g+g+g+g+g+g+g+g+g+g+g+g+g+g+g+g+g+g+g+g+g+g+g+g+g+_,  # noqa
-        _+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_,  # noqa
-    ], tables_source % {'extra_css': '''
+    assert_pixels('table_collapsed_borders_paged', 28, 52, to_pix('''
+        ____________________________
+        _gggggggggggggggggggggggggg_
+        _g________________________g_
+        _g_BBBBBBBBBBBBBBBBBB_____g_
+        _g_BBBBBBBBBBBBBBBBBB_____g_
+        _g_BBBBBBBBBBBBBBBBBB_____g_
+        _g_BBBBBBBBBBBBBBBBBB_____g_
+        _g_BBBBBBBBBBBBBBBBBB_____g_
+        _g_BBBBBBBBBBBBBBBBBB_____g_
+        _g_BBBBBBBBBBBBBBBBBB_____g_
+        _g_BBBBBBBBBBBBBBBBBB_____g_
+        _g_BB____r____r____BB_____g_
+        _g_BB____r____r____BB_____g_
+        _g_BB____r____r____BB_____g_
+        _g_BB____r____r____BB_____g_
+        _g_BBrrrrr____rrrrrBB_____g_
+        _g_BB_________r____BB_____g_
+        _g_BB_________r____BB_____g_
+        _g_BB_________r____BB_____g_
+        _g_BB_________r____BB_____g_
+        _g_BBrrrrrrrrrrrrrrBB_____g_
+        _g________________________g_
+        _g________________________g_
+        _g________________________g_
+        _gggggggggggggggggggggggggg_
+        ____________________________
+        ____________________________
+        _gggggggggggggggggggggggggg_
+        _g_BBrrrrrrrrrrrrrrBB_____g_
+        _g_BB____r____r____BB_____g_
+        _g_BB____r____r____BB_____g_
+        _g_BB____r____r____BB_____g_
+        _g_BB____r____r____BB_____g_
+        _g_BBBBBBBBBBBBBBBBBB_____g_
+        _g_BBBBBBBBBBBBBBBBBB_____g_
+        _g_BBBBBBBBBBBBBBBBBB_____g_
+        _g_BBBBBBBBBBBBBBBBBB_____g_
+        _g_BBBBBBBBBBBBBBBBBB_____g_
+        _g_BBBBBBBBBBBBBBBBBB_____g_
+        _g_BBBBBBBBBBBBBBBBBB_____g_
+        _g_BBBBBBBBBBBBBBBBBB_____g_
+        _g________________________g_
+        _g________________________g_
+        _g________________________g_
+        _g________________________g_
+        _g________________________g_
+        _g________________________g_
+        _g________________________g_
+        _g________________________g_
+        _g________________________g_
+        _gggggggggggggggggggggggggg_
+        ____________________________
+    '''), tables_source % {'extra_css': '''
       x-table { border: solid #00f; border-width: 8px 2px;
                 table-layout: fixed; border-collapse: collapse }
       x-td { border-color: #ff7f7f }
@@ -202,37 +287,103 @@ def test_tables_3():
 
 @assert_no_logs
 @requires('cairo', (1, 12, 0))
+def test_tables_3_rtl():
+    assert_pixels('table_collapsed_borders_paged_rtl', 28, 52, to_pix('''
+        ____________________________
+        _gggggggggggggggggggggggggg_
+        _g________________________g_
+        _g_____BBBBBBBBBBBBBBBBBB_g_
+        _g_____BBBBBBBBBBBBBBBBBB_g_
+        _g_____BBBBBBBBBBBBBBBBBB_g_
+        _g_____BBBBBBBBBBBBBBBBBB_g_
+        _g_____BBBBBBBBBBBBBBBBBB_g_
+        _g_____BBBBBBBBBBBBBBBBBB_g_
+        _g_____BBBBBBBBBBBBBBBBBB_g_
+        _g_____BBBBBBBBBBBBBBBBBB_g_
+        _g_____BB____r____r____BB_g_
+        _g_____BB____r____r____BB_g_
+        _g_____BB____r____r____BB_g_
+        _g_____BB____r____r____BB_g_
+        _g_____BBrrrrr____rrrrrBB_g_
+        _g_____BB____r_________BB_g_
+        _g_____BB____r_________BB_g_
+        _g_____BB____r_________BB_g_
+        _g_____BB____r_________BB_g_
+        _g_____BBrrrrrrrrrrrrrrBB_g_
+        _g________________________g_
+        _g________________________g_
+        _g________________________g_
+        _gggggggggggggggggggggggggg_
+        ____________________________
+        ____________________________
+        _gggggggggggggggggggggggggg_
+        _g_____BBrrrrrrrrrrrrrrBB_g_
+        _g_____BB____r____r____BB_g_
+        _g_____BB____r____r____BB_g_
+        _g_____BB____r____r____BB_g_
+        _g_____BB____r____r____BB_g_
+        _g_____BBBBBBBBBBBBBBBBBB_g_
+        _g_____BBBBBBBBBBBBBBBBBB_g_
+        _g_____BBBBBBBBBBBBBBBBBB_g_
+        _g_____BBBBBBBBBBBBBBBBBB_g_
+        _g_____BBBBBBBBBBBBBBBBBB_g_
+        _g_____BBBBBBBBBBBBBBBBBB_g_
+        _g_____BBBBBBBBBBBBBBBBBB_g_
+        _g_____BBBBBBBBBBBBBBBBBB_g_
+        _g________________________g_
+        _g________________________g_
+        _g________________________g_
+        _g________________________g_
+        _g________________________g_
+        _g________________________g_
+        _g________________________g_
+        _g________________________g_
+        _g________________________g_
+        _gggggggggggggggggggggggggg_
+        ____________________________
+    '''), tables_source % {'extra_css': '''
+      body { direction: rtl; }
+      x-table { border: solid #00f; border-width: 8px 2px;
+                table-layout: fixed; border-collapse: collapse; }
+      x-td { border-color: #ff7f7f }
+      @page { size: 28px 26px; margin: 1px;
+              border: 1px solid rgba(0, 255, 0, 0.5); }
+    '''})
+
+
+@assert_no_logs
+@requires('cairo', (1, 12, 0))
 def test_tables_4():
-    assert_pixels('table_td_backgrounds', 28, 28, [
-        _+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_,  # noqa
-        _+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+_,  # noqa
-        _+B+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+B+_,  # noqa
-        _+B+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+B+_,  # noqa
-        _+B+_+_+r+r+r+r+r+r+_+r+r+r+r+r+r+_+r+r+r+r+r+r+_+_+B+_,  # noqa
-        _+B+_+_+r+r+r+r+r+r+_+r+r+r+r+r+r+_+r+r+r+r+r+r+_+_+B+_,  # noqa
-        _+B+_+_+r+r+r+r+r+r+_+r+r+r+r+r+r+_+r+r+r+r+r+r+_+_+B+_,  # noqa
-        _+B+_+_+r+r+r+r+r+r+_+r+r+r+r+r+r+_+r+r+r+r+r+r+_+_+B+_,  # noqa
-        _+B+_+_+r+r+r+r+r+r+_+r+r+r+r+r+r+_+r+r+r+r+r+r+_+_+B+_,  # noqa
-        _+B+_+_+r+r+r+r+r+r+_+r+r+r+r+r+r+_+r+r+r+r+r+r+_+_+B+_,  # noqa
-        _+B+_+_+_+_+_+_+_+_+_+r+r+r+r+r+r+_+_+_+_+_+_+_+_+_+B+_,  # noqa
-        _+B+_+_+r+r+r+r+r+r+r+S+S+S+S+S+S+_+r+r+r+r+r+r+_+_+B+_,  # noqa
-        _+B+_+_+r+r+r+r+r+r+r+S+S+S+S+S+S+_+r+r+r+r+r+r+_+_+B+_,  # noqa
-        _+B+_+_+r+r+r+r+r+r+r+S+S+S+S+S+S+_+r+r+r+r+r+r+_+_+B+_,  # noqa
-        _+B+_+_+r+r+r+r+r+r+r+S+S+S+S+S+S+_+r+r+r+r+r+r+_+_+B+_,  # noqa
-        _+B+_+_+r+r+r+r+r+r+r+S+S+S+S+S+S+_+r+r+r+r+r+r+_+_+B+_,  # noqa
-        _+B+_+_+r+r+r+r+r+r+r+S+S+S+S+S+S+_+r+r+r+r+r+r+_+_+B+_,  # noqa
-        _+B+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+B+_,  # noqa
-        _+B+_+_+r+r+r+r+r+r+_+r+r+r+r+r+r+_+_+_+_+_+_+_+_+_+B+_,  # noqa
-        _+B+_+_+r+r+r+r+r+r+_+r+r+r+r+r+r+_+_+_+_+_+_+_+_+_+B+_,  # noqa
-        _+B+_+_+r+r+r+r+r+r+_+r+r+r+r+r+r+_+_+_+_+_+_+_+_+_+B+_,  # noqa
-        _+B+_+_+r+r+r+r+r+r+_+r+r+r+r+r+r+_+_+_+_+_+_+_+_+_+B+_,  # noqa
-        _+B+_+_+r+r+r+r+r+r+_+r+r+r+r+r+r+_+_+_+_+_+_+_+_+_+B+_,  # noqa
-        _+B+_+_+r+r+r+r+r+r+_+r+r+r+r+r+r+_+_+_+_+_+_+_+_+_+B+_,  # noqa
-        _+B+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+B+_,  # noqa
-        _+B+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+B+_,  # noqa
-        _+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+_,  # noqa
-        _+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_,  # noqa
-    ], tables_source % {'extra_css': '''
+    assert_pixels('table_td_backgrounds', 28, 28, to_pix('''
+        ____________________________
+        _BBBBBBBBBBBBBBBBBBBBBBBBBB_
+        _B________________________B_
+        _B________________________B_
+        _B__rrrrrr_rrrrrr_rrrrrr__B_
+        _B__rrrrrr_rrrrrr_rrrrrr__B_
+        _B__rrrrrr_rrrrrr_rrrrrr__B_
+        _B__rrrrrr_rrrrrr_rrrrrr__B_
+        _B__rrrrrr_rrrrrr_rrrrrr__B_
+        _B__rrrrrr_rrrrrr_rrrrrr__B_
+        _B_________rrrrrr_________B_
+        _B__rrrrrrrSSSSSS_rrrrrr__B_
+        _B__rrrrrrrSSSSSS_rrrrrr__B_
+        _B__rrrrrrrSSSSSS_rrrrrr__B_
+        _B__rrrrrrrSSSSSS_rrrrrr__B_
+        _B__rrrrrrrSSSSSS_rrrrrr__B_
+        _B__rrrrrrrSSSSSS_rrrrrr__B_
+        _B________________________B_
+        _B__rrrrrr_rrrrrr_________B_
+        _B__rrrrrr_rrrrrr_________B_
+        _B__rrrrrr_rrrrrr_________B_
+        _B__rrrrrr_rrrrrr_________B_
+        _B__rrrrrr_rrrrrr_________B_
+        _B__rrrrrr_rrrrrr_________B_
+        _B________________________B_
+        _B________________________B_
+        _BBBBBBBBBBBBBBBBBBBBBBBBBB_
+        ____________________________
+    '''), tables_source % {'extra_css': '''
       x-table { border-color: #00f; table-layout: fixed }
       x-td { background: rgba(255, 0, 0, 0.5) }
     '''})
@@ -240,37 +391,76 @@ def test_tables_4():
 
 @assert_no_logs
 @requires('cairo', (1, 12, 0))
+def test_tables_4_rtl():
+    assert_pixels('table_td_backgrounds_rtl', 28, 28, to_pix('''
+        ____________________________
+        _BBBBBBBBBBBBBBBBBBBBBBBBBB_
+        _B________________________B_
+        _B________________________B_
+        _B__rrrrrr_rrrrrr_rrrrrr__B_
+        _B__rrrrrr_rrrrrr_rrrrrr__B_
+        _B__rrrrrr_rrrrrr_rrrrrr__B_
+        _B__rrrrrr_rrrrrr_rrrrrr__B_
+        _B__rrrrrr_rrrrrr_rrrrrr__B_
+        _B__rrrrrr_rrrrrr_rrrrrr__B_
+        _B_________rrrrrr_________B_
+        _B__rrrrrr_SSSSSSrrrrrrr__B_
+        _B__rrrrrr_SSSSSSrrrrrrr__B_
+        _B__rrrrrr_SSSSSSrrrrrrr__B_
+        _B__rrrrrr_SSSSSSrrrrrrr__B_
+        _B__rrrrrr_SSSSSSrrrrrrr__B_
+        _B__rrrrrr_SSSSSSrrrrrrr__B_
+        _B________________________B_
+        _B_________rrrrrr_rrrrrr__B_
+        _B_________rrrrrr_rrrrrr__B_
+        _B_________rrrrrr_rrrrrr__B_
+        _B_________rrrrrr_rrrrrr__B_
+        _B_________rrrrrr_rrrrrr__B_
+        _B_________rrrrrr_rrrrrr__B_
+        _B________________________B_
+        _B________________________B_
+        _BBBBBBBBBBBBBBBBBBBBBBBBBB_
+        ____________________________
+    '''), tables_source % {'extra_css': '''
+      x-table { border-color: #00f; table-layout: fixed;
+                direction: rtl; }
+      x-td { background: rgba(255, 0, 0, 0.5) }
+    '''})
+
+
+@assert_no_logs
+@requires('cairo', (1, 12, 0))
 def test_tables_5():
-    assert_pixels('table_row_backgrounds', 28, 28, [
-        _+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_,  # noqa
-        _+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+_,  # noqa
-        _+B+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+B+_,  # noqa
-        _+B+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+B+_,  # noqa
-        _+B+_+_+b+b+b+b+b+b+_+b+b+b+b+b+b+_+b+b+b+b+b+b+_+_+B+_,  # noqa
-        _+B+_+_+b+b+b+b+b+b+_+b+b+b+b+b+b+_+b+b+b+b+b+b+_+_+B+_,  # noqa
-        _+B+_+_+b+b+b+b+b+b+_+b+b+b+b+b+b+_+b+b+b+b+b+b+_+_+B+_,  # noqa
-        _+B+_+_+b+b+b+b+b+b+_+b+b+b+b+b+b+_+b+b+b+b+b+b+_+_+B+_,  # noqa
-        _+B+_+_+b+b+b+b+b+b+_+b+b+b+b+b+b+_+b+b+b+b+b+b+_+_+B+_,  # noqa
-        _+B+_+_+b+b+b+b+b+b+_+b+b+b+b+b+b+_+b+b+b+b+b+b+_+_+B+_,  # noqa
-        _+B+_+_+_+_+_+_+_+_+_+b+b+b+b+b+b+_+_+_+_+_+_+_+_+_+B+_,  # noqa
-        _+B+_+_+b+b+b+b+b+b+b+p+p+p+p+p+p+_+b+b+b+b+b+b+_+_+B+_,  # noqa
-        _+B+_+_+b+b+b+b+b+b+b+p+p+p+p+p+p+_+b+b+b+b+b+b+_+_+B+_,  # noqa
-        _+B+_+_+b+b+b+b+b+b+b+p+p+p+p+p+p+_+b+b+b+b+b+b+_+_+B+_,  # noqa
-        _+B+_+_+b+b+b+b+b+b+b+p+p+p+p+p+p+_+b+b+b+b+b+b+_+_+B+_,  # noqa
-        _+B+_+_+b+b+b+b+b+b+b+p+p+p+p+p+p+_+b+b+b+b+b+b+_+_+B+_,  # noqa
-        _+B+_+_+b+b+b+b+b+b+b+p+p+p+p+p+p+_+b+b+b+b+b+b+_+_+B+_,  # noqa
-        _+B+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+B+_,  # noqa
-        _+B+_+_+r+r+r+r+r+r+_+r+r+r+r+r+r+_+_+_+_+_+_+_+_+_+B+_,  # noqa
-        _+B+_+_+r+r+r+r+r+r+_+r+r+r+r+r+r+_+_+_+_+_+_+_+_+_+B+_,  # noqa
-        _+B+_+_+r+r+r+r+r+r+_+r+r+r+r+r+r+_+_+_+_+_+_+_+_+_+B+_,  # noqa
-        _+B+_+_+r+r+r+r+r+r+_+r+r+r+r+r+r+_+_+_+_+_+_+_+_+_+B+_,  # noqa
-        _+B+_+_+r+r+r+r+r+r+_+r+r+r+r+r+r+_+_+_+_+_+_+_+_+_+B+_,  # noqa
-        _+B+_+_+r+r+r+r+r+r+_+r+r+r+r+r+r+_+_+_+_+_+_+_+_+_+B+_,  # noqa
-        _+B+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+B+_,  # noqa
-        _+B+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+B+_,  # noqa
-        _+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+_,  # noqa
-        _+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_,  # noqa
-    ], tables_source % {'extra_css': '''
+    assert_pixels('table_row_backgrounds', 28, 28, to_pix('''
+        ____________________________
+        _BBBBBBBBBBBBBBBBBBBBBBBBBB_
+        _B________________________B_
+        _B________________________B_
+        _B__bbbbbb_bbbbbb_bbbbbb__B_
+        _B__bbbbbb_bbbbbb_bbbbbb__B_
+        _B__bbbbbb_bbbbbb_bbbbbb__B_
+        _B__bbbbbb_bbbbbb_bbbbbb__B_
+        _B__bbbbbb_bbbbbb_bbbbbb__B_
+        _B__bbbbbb_bbbbbb_bbbbbb__B_
+        _B_________bbbbbb_________B_
+        _B__bbbbbbbpppppp_bbbbbb__B_
+        _B__bbbbbbbpppppp_bbbbbb__B_
+        _B__bbbbbbbpppppp_bbbbbb__B_
+        _B__bbbbbbbpppppp_bbbbbb__B_
+        _B__bbbbbbbpppppp_bbbbbb__B_
+        _B__bbbbbbbpppppp_bbbbbb__B_
+        _B________________________B_
+        _B__rrrrrr_rrrrrr_________B_
+        _B__rrrrrr_rrrrrr_________B_
+        _B__rrrrrr_rrrrrr_________B_
+        _B__rrrrrr_rrrrrr_________B_
+        _B__rrrrrr_rrrrrr_________B_
+        _B__rrrrrr_rrrrrr_________B_
+        _B________________________B_
+        _B________________________B_
+        _BBBBBBBBBBBBBBBBBBBBBBBBBB_
+        ____________________________
+    '''), tables_source % {'extra_css': '''
       x-table { border-color: #00f; table-layout: fixed }
       x-tbody { background: rgba(0, 0, 255, 1) }
       x-tr { background: rgba(255, 0, 0, 0.5) }
@@ -279,38 +469,118 @@ def test_tables_5():
 
 @assert_no_logs
 @requires('cairo', (1, 12, 0))
+def test_tables_5_rtl():
+    assert_pixels('table_row_backgrounds_rtl', 28, 28, to_pix('''
+        ____________________________
+        _BBBBBBBBBBBBBBBBBBBBBBBBBB_
+        _B________________________B_
+        _B________________________B_
+        _B__bbbbbb_bbbbbb_bbbbbb__B_
+        _B__bbbbbb_bbbbbb_bbbbbb__B_
+        _B__bbbbbb_bbbbbb_bbbbbb__B_
+        _B__bbbbbb_bbbbbb_bbbbbb__B_
+        _B__bbbbbb_bbbbbb_bbbbbb__B_
+        _B__bbbbbb_bbbbbb_bbbbbb__B_
+        _B_________bbbbbb_________B_
+        _B__bbbbbb_ppppppbbbbbbb__B_
+        _B__bbbbbb_ppppppbbbbbbb__B_
+        _B__bbbbbb_ppppppbbbbbbb__B_
+        _B__bbbbbb_ppppppbbbbbbb__B_
+        _B__bbbbbb_ppppppbbbbbbb__B_
+        _B__bbbbbb_ppppppbbbbbbb__B_
+        _B________________________B_
+        _B_________rrrrrr_rrrrrr__B_
+        _B_________rrrrrr_rrrrrr__B_
+        _B_________rrrrrr_rrrrrr__B_
+        _B_________rrrrrr_rrrrrr__B_
+        _B_________rrrrrr_rrrrrr__B_
+        _B_________rrrrrr_rrrrrr__B_
+        _B________________________B_
+        _B________________________B_
+        _BBBBBBBBBBBBBBBBBBBBBBBBBB_
+        ____________________________
+    '''), tables_source % {'extra_css': '''
+      x-table { border-color: #00f; table-layout: fixed;
+                direction: rtl; }
+      x-tbody { background: rgba(0, 0, 255, 1) }
+      x-tr { background: rgba(255, 0, 0, 0.5) }
+    '''})
+
+
+@assert_no_logs
+@requires('cairo', (1, 12, 0))
 def test_tables_6():
-    assert_pixels('table_column_backgrounds', 28, 28, [
-        _+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_,  # noqa
-        _+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+_,  # noqa
-        _+B+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+B+_,  # noqa
-        _+B+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+B+_,  # noqa
-        _+B+_+_+b+b+b+b+b+b+_+b+b+b+b+b+b+_+r+r+r+r+r+r+_+_+B+_,  # noqa
-        _+B+_+_+b+b+b+b+b+b+_+b+b+b+b+b+b+_+r+r+r+r+r+r+_+_+B+_,  # noqa
-        _+B+_+_+b+b+b+b+b+b+_+b+b+b+b+b+b+_+r+r+r+r+r+r+_+_+B+_,  # noqa
-        _+B+_+_+b+b+b+b+b+b+_+b+b+b+b+b+b+_+r+r+r+r+r+r+_+_+B+_,  # noqa
-        _+B+_+_+b+b+b+b+b+b+_+b+b+b+b+b+b+_+r+r+r+r+r+r+_+_+B+_,  # noqa
-        _+B+_+_+b+b+b+b+b+b+_+b+b+b+b+b+b+_+r+r+r+r+r+r+_+_+B+_,  # noqa
-        _+B+_+_+_+_+_+_+_+_+_+b+b+b+b+b+b+_+_+_+_+_+_+_+_+_+B+_,  # noqa
-        _+B+_+_+b+b+b+b+b+b+b+p+p+p+p+p+p+_+r+r+r+r+r+r+_+_+B+_,  # noqa
-        _+B+_+_+b+b+b+b+b+b+b+p+p+p+p+p+p+_+r+r+r+r+r+r+_+_+B+_,  # noqa
-        _+B+_+_+b+b+b+b+b+b+b+p+p+p+p+p+p+_+r+r+r+r+r+r+_+_+B+_,  # noqa
-        _+B+_+_+b+b+b+b+b+b+b+p+p+p+p+p+p+_+r+r+r+r+r+r+_+_+B+_,  # noqa
-        _+B+_+_+b+b+b+b+b+b+b+p+p+p+p+p+p+_+r+r+r+r+r+r+_+_+B+_,  # noqa
-        _+B+_+_+b+b+b+b+b+b+b+p+p+p+p+p+p+_+r+r+r+r+r+r+_+_+B+_,  # noqa
-        _+B+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+B+_,  # noqa
-        _+B+_+_+b+b+b+b+b+b+_+b+b+b+b+b+b+_+_+_+_+_+_+_+_+_+B+_,  # noqa
-        _+B+_+_+b+b+b+b+b+b+_+b+b+b+b+b+b+_+_+_+_+_+_+_+_+_+B+_,  # noqa
-        _+B+_+_+b+b+b+b+b+b+_+b+b+b+b+b+b+_+_+_+_+_+_+_+_+_+B+_,  # noqa
-        _+B+_+_+b+b+b+b+b+b+_+b+b+b+b+b+b+_+_+_+_+_+_+_+_+_+B+_,  # noqa
-        _+B+_+_+b+b+b+b+b+b+_+b+b+b+b+b+b+_+_+_+_+_+_+_+_+_+B+_,  # noqa
-        _+B+_+_+b+b+b+b+b+b+_+b+b+b+b+b+b+_+_+_+_+_+_+_+_+_+B+_,  # noqa
-        _+B+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+B+_,  # noqa
-        _+B+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+B+_,  # noqa
-        _+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+_,  # noqa
-        _+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_,  # noqa
-    ], tables_source % {'extra_css': '''
-      x-table { border-color: #00f; table-layout: fixed }
+    assert_pixels('table_column_backgrounds', 28, 28, to_pix('''
+        ____________________________
+        _BBBBBBBBBBBBBBBBBBBBBBBBBB_
+        _B________________________B_
+        _B________________________B_
+        _B__bbbbbb_bbbbbb_rrrrrr__B_
+        _B__bbbbbb_bbbbbb_rrrrrr__B_
+        _B__bbbbbb_bbbbbb_rrrrrr__B_
+        _B__bbbbbb_bbbbbb_rrrrrr__B_
+        _B__bbbbbb_bbbbbb_rrrrrr__B_
+        _B__bbbbbb_bbbbbb_rrrrrr__B_
+        _B_________bbbbbb_________B_
+        _B__bbbbbbbpppppp_rrrrrr__B_
+        _B__bbbbbbbpppppp_rrrrrr__B_
+        _B__bbbbbbbpppppp_rrrrrr__B_
+        _B__bbbbbbbpppppp_rrrrrr__B_
+        _B__bbbbbbbpppppp_rrrrrr__B_
+        _B__bbbbbbbpppppp_rrrrrr__B_
+        _B________________________B_
+        _B__bbbbbb_bbbbbb_________B_
+        _B__bbbbbb_bbbbbb_________B_
+        _B__bbbbbb_bbbbbb_________B_
+        _B__bbbbbb_bbbbbb_________B_
+        _B__bbbbbb_bbbbbb_________B_
+        _B__bbbbbb_bbbbbb_________B_
+        _B________________________B_
+        _B________________________B_
+        _BBBBBBBBBBBBBBBBBBBBBBBBBB_
+        ____________________________
+    '''), tables_source % {'extra_css': '''
+      x-table { border-color: #00f; table-layout: fixed;}
+      x-colgroup { background: rgba(0, 0, 255, 1) }
+      x-col { background: rgba(255, 0, 0, 0.5) }
+    '''})
+
+
+@assert_no_logs
+@requires('cairo', (1, 12, 0))
+def test_tables_6_rtl():
+    assert_pixels('table_column_backgrounds_rtl', 28, 28, to_pix('''
+        ____________________________
+        _BBBBBBBBBBBBBBBBBBBBBBBBBB_
+        _B________________________B_
+        _B________________________B_
+        _B__rrrrrr_bbbbbb_bbbbbb__B_
+        _B__rrrrrr_bbbbbb_bbbbbb__B_
+        _B__rrrrrr_bbbbbb_bbbbbb__B_
+        _B__rrrrrr_bbbbbb_bbbbbb__B_
+        _B__rrrrrr_bbbbbb_bbbbbb__B_
+        _B__rrrrrr_bbbbbb_bbbbbb__B_
+        _B_________bbbbbb_________B_
+        _B__rrrrrr_ppppppbbbbbbb__B_
+        _B__rrrrrr_ppppppbbbbbbb__B_
+        _B__rrrrrr_ppppppbbbbbbb__B_
+        _B__rrrrrr_ppppppbbbbbbb__B_
+        _B__rrrrrr_ppppppbbbbbbb__B_
+        _B__rrrrrr_ppppppbbbbbbb__B_
+        _B________________________B_
+        _B_________bbbbbb_bbbbbb__B_
+        _B_________bbbbbb_bbbbbb__B_
+        _B_________bbbbbb_bbbbbb__B_
+        _B_________bbbbbb_bbbbbb__B_
+        _B_________bbbbbb_bbbbbb__B_
+        _B_________bbbbbb_bbbbbb__B_
+        _B________________________B_
+        _B________________________B_
+        _BBBBBBBBBBBBBBBBBBBBBBBBBB_
+        ____________________________
+    '''), tables_source % {'extra_css': '''
+      x-table { border-color: #00f; table-layout: fixed;
+                direction: rtl; }
       x-colgroup { background: rgba(0, 0, 255, 1) }
       x-col { background: rgba(255, 0, 0, 0.5) }
     '''})
@@ -319,36 +589,36 @@ def test_tables_6():
 @assert_no_logs
 @requires('cairo', (1, 12, 0))
 def test_tables_7():
-    assert_pixels('table_borders_and_row_backgrounds', 28, 28, [
-        _+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_,  # noqa
-        _+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+_,  # noqa
-        _+B+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+B+_,  # noqa
-        _+B+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+B+_,  # noqa
-        _+B+_+_+b+b+b+b+b+b+_+b+b+b+b+b+b+_+b+b+b+b+b+b+_+_+B+_,  # noqa
-        _+B+_+_+b+B+B+B+B+b+_+b+B+B+B+B+b+_+b+B+B+B+B+b+_+_+B+_,  # noqa
-        _+B+_+_+b+B+B+B+B+b+_+b+B+B+B+B+b+_+b+B+B+B+B+b+_+_+B+_,  # noqa
-        _+B+_+_+b+B+B+B+B+b+_+b+B+B+B+B+b+_+b+B+B+B+B+b+_+_+B+_,  # noqa
-        _+B+_+_+b+B+B+B+B+b+_+b+B+B+B+B+b+_+b+B+B+B+B+b+_+_+B+_,  # noqa
-        _+B+_+_+b+b+b+b+b+b+_+b+B+B+B+B+b+_+b+b+b+b+b+b+_+_+B+_,  # noqa
-        _+B+_+_+_+_+_+_+_+_+_+b+B+B+B+B+b+_+_+_+_+_+_+_+_+_+B+_,  # noqa
-        _+B+_+_+r+r+r+r+r+r+r+p+b+b+b+b+p+_+r+r+r+r+r+r+_+_+B+_,  # noqa
-        _+B+_+_+r+_+_+_+_+_+_+b+B+B+B+B+p+_+r+_+_+_+_+r+_+_+B+_,  # noqa
-        _+B+_+_+r+_+_+_+_+_+_+b+B+B+B+B+p+_+r+_+_+_+_+r+_+_+B+_,  # noqa
-        _+B+_+_+r+_+_+_+_+_+_+b+B+B+B+B+p+_+r+_+_+_+_+r+_+_+B+_,  # noqa
-        _+B+_+_+r+_+_+_+_+_+_+b+B+B+B+B+p+_+r+_+_+_+_+r+_+_+B+_,  # noqa
-        _+B+_+_+r+r+r+r+r+r+r+p+p+p+p+p+p+_+r+r+r+r+r+r+_+_+B+_,  # noqa
-        _+B+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+B+_,  # noqa
-        _+B+_+_+r+r+r+r+r+r+_+r+r+r+r+r+r+_+_+_+_+_+_+_+_+_+B+_,  # noqa
-        _+B+_+_+r+_+_+_+_+r+_+r+_+_+_+_+r+_+_+_+_+_+_+_+_+_+B+_,  # noqa
-        _+B+_+_+r+_+_+_+_+r+_+r+_+_+_+_+r+_+_+_+_+_+_+_+_+_+B+_,  # noqa
-        _+B+_+_+r+_+_+_+_+r+_+r+_+_+_+_+r+_+_+_+_+_+_+_+_+_+B+_,  # noqa
-        _+B+_+_+r+_+_+_+_+r+_+r+_+_+_+_+r+_+_+_+_+_+_+_+_+_+B+_,  # noqa
-        _+B+_+_+r+r+r+r+r+r+_+r+r+r+r+r+r+_+_+_+_+_+_+_+_+_+B+_,  # noqa
-        _+B+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+B+_,  # noqa
-        _+B+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+B+_,  # noqa
-        _+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+_,  # noqa
-        _+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_,  # noqa
-    ], tables_source % {'extra_css': '''
+    assert_pixels('table_borders_and_row_backgrounds', 28, 28, to_pix('''
+        ____________________________
+        _BBBBBBBBBBBBBBBBBBBBBBBBBB_
+        _B________________________B_
+        _B________________________B_
+        _B__bbbbbb_bbbbbb_bbbbbb__B_
+        _B__bBBBBb_bBBBBb_bBBBBb__B_
+        _B__bBBBBb_bBBBBb_bBBBBb__B_
+        _B__bBBBBb_bBBBBb_bBBBBb__B_
+        _B__bBBBBb_bBBBBb_bBBBBb__B_
+        _B__bbbbbb_bBBBBb_bbbbbb__B_
+        _B_________bBBBBb_________B_
+        _B__rrrrrrrpbbbbp_rrrrrr__B_
+        _B__r______bBBBBp_r____r__B_
+        _B__r______bBBBBp_r____r__B_
+        _B__r______bBBBBp_r____r__B_
+        _B__r______bBBBBp_r____r__B_
+        _B__rrrrrrrpppppp_rrrrrr__B_
+        _B________________________B_
+        _B__rrrrrr_rrrrrr_________B_
+        _B__r____r_r____r_________B_
+        _B__r____r_r____r_________B_
+        _B__r____r_r____r_________B_
+        _B__r____r_r____r_________B_
+        _B__rrrrrr_rrrrrr_________B_
+        _B________________________B_
+        _B________________________B_
+        _BBBBBBBBBBBBBBBBBBBBBBBBBB_
+        ____________________________
+    '''), tables_source % {'extra_css': '''
       x-table { border-color: #00f; table-layout: fixed }
       x-tr:first-child { background: blue }
       x-td { border-color: rgba(255, 0, 0, 0.5) }
@@ -357,37 +627,77 @@ def test_tables_7():
 
 @assert_no_logs
 @requires('cairo', (1, 12, 0))
+def test_tables_7_rtl():
+    assert_pixels('table_borders_and_row_backgrounds_rtl', 28, 28, to_pix('''
+        ____________________________
+        _BBBBBBBBBBBBBBBBBBBBBBBBBB_
+        _B________________________B_
+        _B________________________B_
+        _B__bbbbbb_bbbbbb_bbbbbb__B_
+        _B__bBBBBb_bBBBBb_bBBBBb__B_
+        _B__bBBBBb_bBBBBb_bBBBBb__B_
+        _B__bBBBBb_bBBBBb_bBBBBb__B_
+        _B__bBBBBb_bBBBBb_bBBBBb__B_
+        _B__bbbbbb_bBBBBb_bbbbbb__B_
+        _B_________bBBBBb_________B_
+        _B__rrrrrr_pbbbbprrrrrrr__B_
+        _B__r____r_pBBBBb______r__B_
+        _B__r____r_pBBBBb______r__B_
+        _B__r____r_pBBBBb______r__B_
+        _B__r____r_pBBBBb______r__B_
+        _B__rrrrrr_pppppprrrrrrr__B_
+        _B________________________B_
+        _B_________rrrrrr_rrrrrr__B_
+        _B_________r____r_r____r__B_
+        _B_________r____r_r____r__B_
+        _B_________r____r_r____r__B_
+        _B_________r____r_r____r__B_
+        _B_________rrrrrr_rrrrrr__B_
+        _B________________________B_
+        _B________________________B_
+        _BBBBBBBBBBBBBBBBBBBBBBBBBB_
+        ____________________________
+    '''), tables_source % {'extra_css': '''
+      x-table { border-color: #00f; table-layout: fixed;
+                direction: rtl; }
+      x-tr:first-child { background: blue }
+      x-td { border-color: rgba(255, 0, 0, 0.5) }
+    '''})
+
+
+@assert_no_logs
+@requires('cairo', (1, 12, 0))
 def test_tables_8():
-    assert_pixels('table_borders_and_column_backgrounds', 28, 28, [
-        _+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_,  # noqa
-        _+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+_,  # noqa
-        _+B+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+B+_,  # noqa
-        _+B+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+B+_,  # noqa
-        _+B+_+_+b+b+b+b+b+b+_+r+r+r+r+r+r+_+r+r+r+r+r+r+_+_+B+_,  # noqa
-        _+B+_+_+b+B+B+B+B+b+_+r+_+_+_+_+r+_+r+_+_+_+_+r+_+_+B+_,  # noqa
-        _+B+_+_+b+B+B+B+B+b+_+r+_+_+_+_+r+_+r+_+_+_+_+r+_+_+B+_,  # noqa
-        _+B+_+_+b+B+B+B+B+b+_+r+_+_+_+_+r+_+r+_+_+_+_+r+_+_+B+_,  # noqa
-        _+B+_+_+b+B+B+B+B+b+_+r+_+_+_+_+r+_+r+_+_+_+_+r+_+_+B+_,  # noqa
-        _+B+_+_+b+b+b+b+b+b+_+r+_+_+_+_+r+_+r+r+r+r+r+r+_+_+B+_,  # noqa
-        _+B+_+_+_+_+_+_+_+_+_+r+_+_+_+_+r+_+_+_+_+_+_+_+_+_+B+_,  # noqa
-        _+B+_+_+b+b+b+b+b+b+b+p+b+b+b+b+p+_+r+r+r+r+r+r+_+_+B+_,  # noqa
-        _+B+_+_+b+B+B+B+B+B+B+b+B+B+B+B+p+_+r+_+_+_+_+r+_+_+B+_,  # noqa
-        _+B+_+_+b+B+B+B+B+B+B+b+B+B+B+B+p+_+r+_+_+_+_+r+_+_+B+_,  # noqa
-        _+B+_+_+b+B+B+B+B+B+B+b+B+B+B+B+p+_+r+_+_+_+_+r+_+_+B+_,  # noqa
-        _+B+_+_+b+B+B+B+B+B+B+b+B+B+B+B+p+_+r+_+_+_+_+r+_+_+B+_,  # noqa
-        _+B+_+_+b+b+b+b+b+b+b+p+p+p+p+p+p+_+r+r+r+r+r+r+_+_+B+_,  # noqa
-        _+B+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+B+_,  # noqa
-        _+B+_+_+b+b+b+b+b+b+_+r+r+r+r+r+r+_+_+_+_+_+_+_+_+_+B+_,  # noqa
-        _+B+_+_+b+B+B+B+B+b+_+r+_+_+_+_+r+_+_+_+_+_+_+_+_+_+B+_,  # noqa
-        _+B+_+_+b+B+B+B+B+b+_+r+_+_+_+_+r+_+_+_+_+_+_+_+_+_+B+_,  # noqa
-        _+B+_+_+b+B+B+B+B+b+_+r+_+_+_+_+r+_+_+_+_+_+_+_+_+_+B+_,  # noqa
-        _+B+_+_+b+B+B+B+B+b+_+r+_+_+_+_+r+_+_+_+_+_+_+_+_+_+B+_,  # noqa
-        _+B+_+_+b+b+b+b+b+b+_+r+r+r+r+r+r+_+_+_+_+_+_+_+_+_+B+_,  # noqa
-        _+B+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+B+_,  # noqa
-        _+B+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+B+_,  # noqa
-        _+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+_,  # noqa
-        _+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_,  # noqa
-    ], tables_source % {'extra_css': '''
+    assert_pixels('table_borders_and_column_backgrounds', 28, 28, to_pix('''
+        ____________________________
+        _BBBBBBBBBBBBBBBBBBBBBBBBBB_
+        _B________________________B_
+        _B________________________B_
+        _B__bbbbbb_rrrrrr_rrrrrr__B_
+        _B__bBBBBb_r____r_r____r__B_
+        _B__bBBBBb_r____r_r____r__B_
+        _B__bBBBBb_r____r_r____r__B_
+        _B__bBBBBb_r____r_r____r__B_
+        _B__bbbbbb_r____r_rrrrrr__B_
+        _B_________r____r_________B_
+        _B__bbbbbbbpbbbbp_rrrrrr__B_
+        _B__bBBBBBBbBBBBp_r____r__B_
+        _B__bBBBBBBbBBBBp_r____r__B_
+        _B__bBBBBBBbBBBBp_r____r__B_
+        _B__bBBBBBBbBBBBp_r____r__B_
+        _B__bbbbbbbpppppp_rrrrrr__B_
+        _B________________________B_
+        _B__bbbbbb_rrrrrr_________B_
+        _B__bBBBBb_r____r_________B_
+        _B__bBBBBb_r____r_________B_
+        _B__bBBBBb_r____r_________B_
+        _B__bBBBBb_r____r_________B_
+        _B__bbbbbb_rrrrrr_________B_
+        _B________________________B_
+        _B________________________B_
+        _BBBBBBBBBBBBBBBBBBBBBBBBBB_
+        ____________________________
+    '''), tables_source % {'extra_css': '''
       x-table { border-color: #00f; table-layout: fixed }
       x-col:first-child { background: blue }
       x-td { border-color: rgba(255, 0, 0, 0.5) }
@@ -396,46 +706,85 @@ def test_tables_8():
 
 @assert_no_logs
 @requires('cairo', (1, 12, 0))
+def test_tables_8_rtl():
+    assert_pixels('table_borders_and_column_backgrounds_rtl', 28, 28, to_pix('''
+        ____________________________
+        _BBBBBBBBBBBBBBBBBBBBBBBBBB_
+        _B________________________B_
+        _B________________________B_
+        _B__rrrrrr_rrrrrr_bbbbbb__B_
+        _B__r____r_r____r_bBBBBb__B_
+        _B__r____r_r____r_bBBBBb__B_
+        _B__r____r_r____r_bBBBBb__B_
+        _B__r____r_r____r_bBBBBb__B_
+        _B__rrrrrr_r____r_bbbbbb__B_
+        _B_________r____r_________B_
+        _B__rrrrrr_pbbbbpbbbbbbb__B_
+        _B__r____r_pBBBBbBBBBBBb__B_
+        _B__r____r_pBBBBbBBBBBBb__B_
+        _B__r____r_pBBBBbBBBBBBb__B_
+        _B__r____r_pBBBBbBBBBBBb__B_
+        _B__rrrrrr_ppppppbbbbbbb__B_
+        _B________________________B_
+        _B_________rrrrrr_bbbbbb__B_
+        _B_________r____r_bBBBBb__B_
+        _B_________r____r_bBBBBb__B_
+        _B_________r____r_bBBBBb__B_
+        _B_________r____r_bBBBBb__B_
+        _B_________rrrrrr_bbbbbb__B_
+        _B________________________B_
+        _B________________________B_
+        _BBBBBBBBBBBBBBBBBBBBBBBBBB_
+        ____________________________
+    '''), tables_source % {'extra_css': '''
+      x-table { border-color: #00f; table-layout: fixed;
+                direction: rtl; }
+      x-col:first-child { background: blue }
+      x-td { border-color: rgba(255, 0, 0, 0.5) }
+    '''})
+
+
+@assert_no_logs
+@requires('cairo', (1, 12, 0))
 def test_tables_9():
-    r = as_pixel(b'\xff\x00\x00\xff')
-    assert_pixels('collapsed_border_thead', 22, 36, [
-        _+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_,  # noqa
-        _+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+_,  # noqa
-        _+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+_,  # noqa
-        _+B+B+B+_+_+_+_+r+_+_+_+_+r+_+_+_+_+B+B+B+_,  # noqa
-        _+B+B+B+_+_+_+_+r+_+_+_+_+r+_+_+_+_+B+B+B+_,  # noqa
-        _+B+B+B+_+_+_+_+r+_+_+_+_+r+_+_+_+_+B+B+B+_,  # noqa
-        _+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+_,  # noqa
-        _+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+_,  # noqa
-        _+_+r+_+_+_+_+_+r+_+_+_+_+r+_+_+_+_+_+r+_+_,  # noqa
-        _+_+r+_+_+_+_+_+r+_+_+_+_+r+_+_+_+_+_+r+_+_,  # noqa
-        _+_+r+_+_+_+_+_+r+_+_+_+_+r+_+_+_+_+_+r+_+_,  # noqa
-        _+_+r+r+r+r+r+r+r+r+r+r+r+r+r+r+r+r+r+r+_+_,  # noqa
-        _+_+r+_+_+_+_+_+r+_+_+_+_+r+_+_+_+_+_+r+_+_,  # noqa
-        _+_+r+_+_+_+_+_+r+_+_+_+_+r+_+_+_+_+_+r+_+_,  # noqa
-        _+_+r+_+_+_+_+_+r+_+_+_+_+r+_+_+_+_+_+r+_+_,  # noqa
-        _+_+r+r+r+r+r+r+r+r+r+r+r+r+r+r+r+r+r+r+_+_,  # noqa
-        _+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_,  # noqa
-        _+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_,  # noqa
-        _+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+_,  # noqa
-        _+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+_,  # noqa
-        _+B+B+B+_+_+_+_+r+_+_+_+_+r+_+_+_+_+B+B+B+_,  # noqa
-        _+B+B+B+_+_+_+_+r+_+_+_+_+r+_+_+_+_+B+B+B+_,  # noqa
-        _+B+B+B+_+_+_+_+r+_+_+_+_+r+_+_+_+_+B+B+B+_,  # noqa
-        _+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+_,  # noqa
-        _+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+_,  # noqa
-        _+_+r+_+_+_+_+_+r+_+_+_+_+r+_+_+_+_+_+r+_+_,  # noqa
-        _+_+r+_+_+_+_+_+r+_+_+_+_+r+_+_+_+_+_+r+_+_,  # noqa
-        _+_+r+_+_+_+_+_+r+_+_+_+_+r+_+_+_+_+_+r+_+_,  # noqa
-        _+_+r+r+r+r+r+r+r+r+r+r+r+r+r+r+r+r+r+r+_+_,  # noqa
-        _+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_,  # noqa
-        _+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_,  # noqa
-        _+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_,  # noqa
-        _+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_,  # noqa
-        _+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_,  # noqa
-        _+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_,  # noqa
-        _+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_,  # noqa
-    ], '''
+    assert_pixels('collapsed_border_thead', 22, 36, '''
+        ______________________
+        _BBBBBBBBBBBBBBBBBBBB_
+        _BBBBBBBBBBBBBBBBBBBB_
+        _BBB____R____R____BBB_
+        _BBB____R____R____BBB_
+        _BBB____R____R____BBB_
+        _BBBBBBBBBBBBBBBBBBBB_
+        _BBBBBBBBBBBBBBBBBBBB_
+        __R_____R____R_____R__
+        __R_____R____R_____R__
+        __R_____R____R_____R__
+        __RRRRRRRRRRRRRRRRRR__
+        __R_____R____R_____R__
+        __R_____R____R_____R__
+        __R_____R____R_____R__
+        __RRRRRRRRRRRRRRRRRR__
+        ______________________
+        ______________________
+        _BBBBBBBBBBBBBBBBBBBB_
+        _BBBBBBBBBBBBBBBBBBBB_
+        _BBB____R____R____BBB_
+        _BBB____R____R____BBB_
+        _BBB____R____R____BBB_
+        _BBBBBBBBBBBBBBBBBBBB_
+        _BBBBBBBBBBBBBBBBBBBB_
+        __R_____R____R_____R__
+        __R_____R____R_____R__
+        __R_____R____R_____R__
+        __RRRRRRRRRRRRRRRRRR__
+        ______________________
+        ______________________
+        ______________________
+        ______________________
+        ______________________
+        ______________________
+        ______________________
+    ''', '''
       <style>
         @page { size: 22px 18px; margin: 1px; background: #fff }
         td { border: 1px red solid; width: 4px; height: 3px; }
@@ -451,44 +800,44 @@ def test_tables_9():
 @assert_no_logs
 @requires('cairo', (1, 12, 0))
 def test_tables_10():
-    assert_pixels('collapsed_border_tfoot', 22, 36, [
-        _+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_,  # noqa
-        _+_+R+R+R+R+R+R+R+R+R+R+R+R+R+R+R+R+R+R+_+_,  # noqa
-        _+_+R+_+_+_+_+_+R+_+_+_+_+R+_+_+_+_+_+R+_+_,  # noqa
-        _+_+R+_+_+_+_+_+R+_+_+_+_+R+_+_+_+_+_+R+_+_,  # noqa
-        _+_+R+_+_+_+_+_+R+_+_+_+_+R+_+_+_+_+_+R+_+_,  # noqa
-        _+_+R+R+R+R+R+R+R+R+R+R+R+R+R+R+R+R+R+R+_+_,  # noqa
-        _+_+R+_+_+_+_+_+R+_+_+_+_+R+_+_+_+_+_+R+_+_,  # noqa
-        _+_+R+_+_+_+_+_+R+_+_+_+_+R+_+_+_+_+_+R+_+_,  # noqa
-        _+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+_,  # noqa
-        _+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+_,  # noqa
-        _+B+B+B+_+_+_+_+R+_+_+_+_+R+_+_+_+_+B+B+B+_,  # noqa
-        _+B+B+B+_+_+_+_+R+_+_+_+_+R+_+_+_+_+B+B+B+_,  # noqa
-        _+B+B+B+_+_+_+_+R+_+_+_+_+R+_+_+_+_+B+B+B+_,  # noqa
-        _+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+_,  # noqa
-        _+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+_,  # noqa
-        _+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_,  # noqa
-        _+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_,  # noqa
-        _+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_,  # noqa
-        _+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_,  # noqa
-        _+_+R+R+R+R+R+R+R+R+R+R+R+R+R+R+R+R+R+R+_+_,  # noqa
-        _+_+R+_+_+_+_+_+R+_+_+_+_+R+_+_+_+_+_+R+_+_,  # noqa
-        _+_+R+_+_+_+_+_+R+_+_+_+_+R+_+_+_+_+_+R+_+_,  # noqa
-        _+_+R+_+_+_+_+_+R+_+_+_+_+R+_+_+_+_+_+R+_+_,  # noqa
-        _+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+_,  # noqa
-        _+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+_,  # noqa
-        _+B+B+B+_+_+_+_+R+_+_+_+_+R+_+_+_+_+B+B+B+_,  # noqa
-        _+B+B+B+_+_+_+_+R+_+_+_+_+R+_+_+_+_+B+B+B+_,  # noqa
-        _+B+B+B+_+_+_+_+R+_+_+_+_+R+_+_+_+_+B+B+B+_,  # noqa
-        _+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+_,  # noqa
-        _+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+B+_,  # noqa
-        _+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_,  # noqa
-        _+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_,  # noqa
-        _+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_,  # noqa
-        _+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_,  # noqa
-        _+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_,  # noqa
-        _+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_,  # noqa
-    ], '''
+    assert_pixels('collapsed_border_tfoot', 22, 36, '''
+        ______________________
+        __RRRRRRRRRRRRRRRRRR__
+        __R_____R____R_____R__
+        __R_____R____R_____R__
+        __R_____R____R_____R__
+        __RRRRRRRRRRRRRRRRRR__
+        __R_____R____R_____R__
+        __R_____R____R_____R__
+        _BBBBBBBBBBBBBBBBBBBB_
+        _BBBBBBBBBBBBBBBBBBBB_
+        _BBB____R____R____BBB_
+        _BBB____R____R____BBB_
+        _BBB____R____R____BBB_
+        _BBBBBBBBBBBBBBBBBBBB_
+        _BBBBBBBBBBBBBBBBBBBB_
+        ______________________
+        ______________________
+        ______________________
+        ______________________
+        __RRRRRRRRRRRRRRRRRR__
+        __R_____R____R_____R__
+        __R_____R____R_____R__
+        __R_____R____R_____R__
+        _BBBBBBBBBBBBBBBBBBBB_
+        _BBBBBBBBBBBBBBBBBBBB_
+        _BBB____R____R____BBB_
+        _BBB____R____R____BBB_
+        _BBB____R____R____BBB_
+        _BBBBBBBBBBBBBBBBBBBB_
+        _BBBBBBBBBBBBBBBBBBBB_
+        ______________________
+        ______________________
+        ______________________
+        ______________________
+        ______________________
+        ______________________
+    ''', '''
       <style>
         @page { size: 22px 18px; margin: 1px; background: #fff }
         td { border: 1px red solid; width: 4px; height: 3px; }
@@ -505,21 +854,21 @@ def test_tables_10():
 @assert_no_logs
 @requires('cairo', (1, 12, 0))
 def test_tables_11():
-    # Segression test for inline table with collapsed border and alignment
+    # Regression test for inline table with collapsed border and alignment
     # rendering borders incorrectly
     # https://github.com/Kozea/WeasyPrint/issues/82
-    assert_pixels('inline_text_align', 20, 10, [
-        _+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_,  # noqa
-        _+_+_+_+_+_+_+_+R+R+R+R+R+R+R+R+R+R+R+_,  # noqa
-        _+_+_+_+_+_+_+_+R+_+_+_+_+R+_+_+_+_+R+_,  # noqa
-        _+_+_+_+_+_+_+_+R+_+_+_+_+R+_+_+_+_+R+_,  # noqa
-        _+_+_+_+_+_+_+_+R+_+_+_+_+R+_+_+_+_+R+_,  # noqa
-        _+_+_+_+_+_+_+_+R+R+R+R+R+R+R+R+R+R+R+_,  # noqa
-        _+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_,  # noqa
-        _+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_,  # noqa
-        _+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_,  # noqa
-        _+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_,  # noqa
-    ], '''
+    assert_pixels('inline_text_align', 20, 10, '''
+      ____________________
+      ________RRRRRRRRRRR_
+      ________R____R____R_
+      ________R____R____R_
+      ________R____R____R_
+      ________RRRRRRRRRRR_
+      ____________________
+      ____________________
+      ____________________
+      ____________________
+    ''', '''
       <style>
         @page { size: 20px 10px; margin: 1px; background: #fff }
         body { text-align: right; font-size: 0 }
@@ -528,3 +877,174 @@ def test_tables_11():
       </style>
       <table style="table-layout: fixed; border-collapse: collapse">
         <tr><td></td><td></td></tr>''')
+
+
+@assert_no_logs
+@requires('cairo', (1, 12, 0))
+def test_tables_12():
+    assert_pixels('table_collapsed_borders', 28, 28, to_pix('''
+        ____________________________
+        _________BBBBBBBBBBBBBBBBBB_
+        _________BBBBBBBBBBBBBBBBBB_
+        _________BB____r____r____BB_
+        _________BB____r____r____BB_
+        _________BB____r____r____BB_
+        _________BB____r____r____BB_
+        _________BBrrrrr____rrrrrBB_
+        _________BB____r_________BB_
+        _________BB____r_________BB_
+        _________BB____r_________BB_
+        _________BB____r_________BB_
+        _________BBrrrrrrrrrrrrrrBB_
+        _________BB____r____r____BB_
+        _________BB____r____r____BB_
+        _________BB____r____r____BB_
+        _________BB____r____r____BB_
+        _________BBBBBBBBBBBBBBBBBB_
+        _________BBBBBBBBBBBBBBBBBB_
+        ____________________________
+        ____________________________
+        ____________________________
+        ____________________________
+        ____________________________
+        ____________________________
+        ____________________________
+        ____________________________
+        ____________________________
+    '''), tables_source % {'extra_css': '''
+      body { direction: rtl }
+      x-table { border: 2px solid #00f; table-layout: fixed;
+                border-collapse: collapse }
+      x-td { border-color: #ff7f7f }
+    '''})
+
+
+@assert_no_logs
+@requires('cairo', (1, 12, 0))
+def test_tables_13():
+    assert_pixels('table_collapsed_borders_paged', 28, 52, to_pix('''
+        ____________________________
+        _gggggggggggggggggggggggggg_
+        _g________________________g_
+        _g_____BBBBBBBBBBBBBBBBBB_g_
+        _g_____BBBBBBBBBBBBBBBBBB_g_
+        _g_____BBBBBBBBBBBBBBBBBB_g_
+        _g_____BBBBBBBBBBBBBBBBBB_g_
+        _g_____BBBBBBBBBBBBBBBBBB_g_
+        _g_____BBBBBBBBBBBBBBBBBB_g_
+        _g_____BBBBBBBBBBBBBBBBBB_g_
+        _g_____BBBBBBBBBBBBBBBBBB_g_
+        _g_____BB____r____r____BB_g_
+        _g_____BB____r____r____BB_g_
+        _g_____BB____r____r____BB_g_
+        _g_____BB____r____r____BB_g_
+        _g_____BBrrrrr____rrrrrBB_g_
+        _g_____BB____r_________BB_g_
+        _g_____BB____r_________BB_g_
+        _g_____BB____r_________BB_g_
+        _g_____BB____r_________BB_g_
+        _g_____BBrrrrrrrrrrrrrrBB_g_
+        _g________________________g_
+        _g________________________g_
+        _g________________________g_
+        _gggggggggggggggggggggggggg_
+        ____________________________
+        ____________________________
+        _gggggggggggggggggggggggggg_
+        _g_____BBrrrrrrrrrrrrrrBB_g_
+        _g_____BB____r____r____BB_g_
+        _g_____BB____r____r____BB_g_
+        _g_____BB____r____r____BB_g_
+        _g_____BB____r____r____BB_g_
+        _g_____BBBBBBBBBBBBBBBBBB_g_
+        _g_____BBBBBBBBBBBBBBBBBB_g_
+        _g_____BBBBBBBBBBBBBBBBBB_g_
+        _g_____BBBBBBBBBBBBBBBBBB_g_
+        _g_____BBBBBBBBBBBBBBBBBB_g_
+        _g_____BBBBBBBBBBBBBBBBBB_g_
+        _g_____BBBBBBBBBBBBBBBBBB_g_
+        _g_____BBBBBBBBBBBBBBBBBB_g_
+        _g________________________g_
+        _g________________________g_
+        _g________________________g_
+        _g________________________g_
+        _g________________________g_
+        _g________________________g_
+        _g________________________g_
+        _g________________________g_
+        _g________________________g_
+        _gggggggggggggggggggggggggg_
+        ____________________________
+    '''), tables_source % {'extra_css': '''
+      body { direction: rtl }
+      x-table { border: solid #00f; border-width: 8px 2px;
+                table-layout: fixed; border-collapse: collapse }
+      x-td { border-color: #ff7f7f }
+      @page { size: 28px 26px; margin: 1px;
+              border: 1px solid rgba(0, 255, 0, 0.5); }
+    '''})
+
+
+@pytest.mark.xfail
+@assert_no_logs
+@requires('cairo', (1, 12, 0))
+def test_tables_14():
+    assert_pixels('table_background_column_paged', 28, 52, to_pix('''
+        ____________________________
+        _RRR_RRR_RRR________________
+        _RRR_RRR_RRR________________
+        _RRR_RRR_RRR________________
+        _RRR_RRR_RRR________________
+        _RRR_RRR_RRR________________
+        _RRR_RRR_RRR________________
+        _RRR_RRR_RRR________________
+        _RRR_RRR_RRR________________
+        _RRR_RRR_RRR________________
+        _RRR_RRR_RRR________________
+        _____RRR____________________
+        _RRRRRRR_RRR________________
+        _RRRRRRR_RRR________________
+        _RRRRRRR_RRR________________
+        _RRRRRRR_RRR________________
+        _RRRRRRR_RRR________________
+        _RRRRRRR_RRR________________
+        _RRRRRRR_RRR________________
+        _RRRRRRR_RRR________________
+        _RRRRRRR_RRR________________
+        _RRRRRRR_RRR________________
+        ____________________________
+        ____________________________
+        ____________________________
+        ____________________________
+        ____________________________
+        _RRR_RRR____________________
+        _RRR_RRR____________________
+        _RRR_RRR____________________
+        _RRR_RRR____________________
+        _RRR_RRR____________________
+        _RRR_RRR____________________
+        _RRR_RRR____________________
+        _RRR_RRR____________________
+        _RRR_RRR____________________
+        _RRR_RRR____________________
+        ____________________________
+        ____________________________
+        ____________________________
+        ____________________________
+        ____________________________
+        ____________________________
+        ____________________________
+        ____________________________
+        ____________________________
+        ____________________________
+        ____________________________
+        ____________________________
+        ____________________________
+        ____________________________
+        ____________________________
+    '''), tables_source % {'extra_css': '''
+      @page { size: 28px 26px }
+      x-table { margin: 0; padding: 0; border: 0 }
+      x-col { background: red }
+      x-td { padding: 0; width: 1px; height: 8px }
+    '''})

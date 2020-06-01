@@ -4,9 +4,6 @@
 
     Tests for multicolumn layout.
 
-    :copyright: Copyright 2011-2017 Simon Sapin and contributors, see AUTHORS.
-    :license: BSD, see LICENSE for details.
-
 """
 
 import pytest
@@ -81,6 +78,37 @@ def test_column_gap(value, width):
     assert [column.position_x for column in columns] == (
         [0, 100 + width / 3, 200 + 2 * width / 3])
     assert [column.position_y for column in columns] == [0, 0, 0]
+
+
+@assert_no_logs
+def test_column_span():
+    page, = render_pages('''
+      <style>
+        @font-face { src: url(AHEM____.TTF); font-family: ahem }
+        body { margin: 0; font-family: "ahem"; line-height: 1 }
+        div { columns: 2; width: 10em; column-gap: 0 }
+        section { column-span: all; margin: 1em 0 }
+      </style>
+
+      <div>
+        abc def
+        <section>test</section>
+        <section>test</section>
+        ghi jkl
+      </div>
+    ''')
+    html, = page.children
+    body, = html.children
+    div, = body.children
+    column1, column2, section1, section2, column3, column4 = div.children
+    assert (column1.position_x, column1.position_y) == (0, 0)
+    assert (column2.position_x, column2.position_y) == (5 * 16, 0)
+    assert (section1.content_box_x(), section1.content_box_y()) == (0, 32)
+    assert (section2.content_box_x(), section2.content_box_y()) == (0, 64)
+    assert (column3.position_x, column3.position_y) == (0, 96)
+    assert (column4.position_x, column4.position_y) == (5 * 16, 96)
+
+    assert column1.height == 16
 
 
 @assert_no_logs
@@ -329,3 +357,23 @@ def test_columns_regression_3():
     assert div1.children[0].children[0].text == 'B1'
     assert div2.children[0].children[0].text == 'B2'
     assert div3.children[0].children[0].text == 'B3'
+
+
+@assert_no_logs
+def test_columns_regression_4():
+    # Regression test #3 for https://github.com/Kozea/WeasyPrint/issues/897
+    page, = render_pages('''
+      <div style="position:absolute">
+        <div style="column-count:2">
+          <div>a</div>
+        </div>
+      </div>
+    ''')
+    html, = page.children
+    body, = html.children
+    div, = body.children
+    assert div.position_y == 0
+    column1, = div.children
+    assert column1.position_y == 0
+    div1, = column1.children
+    assert div1.position_y == 0

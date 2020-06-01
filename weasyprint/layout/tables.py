@@ -4,9 +4,6 @@
 
     Layout for tables and internal table boxes.
 
-    :copyright: Copyright 2011-2016 Simon Sapin and contributors, see AUTHORS.
-    :license: BSD, see LICENSE for details.
-
 """
 
 from ..formatting_structure import boxes
@@ -15,12 +12,13 @@ from .percentages import resolve_one_percentage, resolve_percentages
 from .preferred import max_content_width, table_and_columns_preferred_widths
 
 
-def table_layout(context, table, max_position_y, skip_stack,
-                 containing_block, device_size, page_is_empty, absolute_boxes,
-                 fixed_boxes):
+def table_layout(context, table, max_position_y, skip_stack, containing_block,
+                 page_is_empty, absolute_boxes, fixed_boxes):
     """Layout for a table box."""
     # Avoid a circular import
-    from .blocks import block_container_layout
+    from .blocks import (
+        block_container_layout, block_level_page_break,
+        find_earlier_page_break)
 
     column_widths = table.column_widths
 
@@ -30,15 +28,24 @@ def table_layout(context, table, max_position_y, skip_stack,
         border_spacing_x = 0
         border_spacing_y = 0
 
-    # TODO: reverse this for direction: rtl
     column_positions = table.column_positions = []
-    position_x = table.content_box_x()
-    rows_x = position_x + border_spacing_x
-    for width in column_widths:
-        position_x += border_spacing_x
-        column_positions.append(position_x)
-        position_x += width
-    rows_width = position_x - rows_x
+    rows_left_x = table.content_box_x() + border_spacing_x
+    if table.style['direction'] == 'ltr':
+        position_x = table.content_box_x()
+        rows_x = position_x + border_spacing_x
+        for width in column_widths:
+            position_x += border_spacing_x
+            column_positions.append(position_x)
+            position_x += width
+        rows_width = position_x - rows_x
+    else:
+        position_x = table.content_box_x() + table.width
+        rows_x = position_x - border_spacing_x
+        for width in column_widths:
+            position_x -= border_spacing_x
+            position_x -= width
+            column_positions.append(position_x)
+        rows_width = rows_x - position_x
 
     if table.style['border_collapse'] == 'collapse':
         if skip_stack:
@@ -58,12 +65,14 @@ def table_layout(context, table, max_position_y, skip_stack,
                 in horizontal_borders[skipped_rows]) / 2
 
     # Make this a sub-function so that many local variables like rows_x
-    # need not be passed as parameters.
+    # don't need to be passed as parameters.
     def group_layout(group, position_y, max_position_y,
                      page_is_empty, skip_stack):
         resume_at = None
+        next_page = {'break': 'any', 'page': None}
+        original_page_is_empty = page_is_empty
         resolve_percentages(group, containing_block=table)
-        group.position_x = rows_x
+        group.position_x = rows_left_x
         group.position_y = position_y
         group.width = rows_width
         new_group_children = []
@@ -76,9 +85,20 @@ def table_layout(context, table, max_position_y, skip_stack,
         else:
             skip, skip_stack = skip_stack
             assert not skip_stack  # No breaks inside rows for now
-        for index_row, row in group.enumerate_skip(skip):
+        for i, row in enumerate(group.children[skip:]):
+            index_row = i + skip
+            row.index = index_row
+
+            if new_group_children:
+                page_break = block_level_page_break(
+                    new_group_children[-1], row)
+                if page_break in ('page', 'recto', 'verso', 'left', 'right'):
+                    next_page['break'] = page_break
+                    resume_at = (index_row, None)
+                    break
+
             resolve_percentages(row, containing_block=table)
-            row.position_x = rows_x
+            row.position_x = rows_left_x
             row.position_y = position_y
             row.width = rows_width
             # Place cells at the top of the row and layout their content
@@ -101,12 +121,19 @@ def table_layout(context, table, max_position_y, skip_stack,
                                    len(ignored_cells), ignored_cells)
                     break
                 resolve_percentages(cell, containing_block=table)
-                cell.position_x = column_positions[cell.grid_x]
+                if table.style['direction'] == 'ltr':
+                    cell.position_x = column_positions[cell.grid_x]
+                else:
+                    cell.position_x = column_positions[
+                        cell.grid_x + cell.colspan - 1]
                 cell.position_y = row.position_y
                 cell.margin_top = 0
                 cell.margin_left = 0
                 cell.width = 0
                 borders_plus_padding = cell.border_width()  # with width==0
+                # TODO: we should remove the number of columns with no
+                # originating cells to cell.colspan, see
+                # test_layout_table_auto_49
                 cell.width = (
                     sum(spanned_widths) +
                     border_spacing_x * (cell.colspan - 1) -
@@ -118,7 +145,6 @@ def table_layout(context, table, max_position_y, skip_stack,
                     context, cell,
                     max_position_y=float('inf'),
                     skip_stack=None,
-                    device_size=device_size,
                     page_is_empty=True,
                     absolute_boxes=absolute_boxes,
                     fixed_boxes=fixed_boxes)
@@ -152,8 +178,6 @@ def table_layout(context, table, max_position_y, skip_stack,
                     extra = row.baseline - cell.baseline
                     if cell.baseline != row.baseline and extra:
                         add_top_padding(cell, extra)
-            else:
-                row.baseline = None
 
             # row height
             for cell in row.children:
@@ -164,14 +188,17 @@ def table_layout(context, table, max_position_y, skip_stack,
                     row_bottom_y = max(
                         cell.position_y + cell.border_height()
                         for cell in ending_cells)
-                    row.height = row_bottom_y - row.position_y
+                    row.height = max(row_bottom_y - row.position_y, 0)
                 else:
                     row.height = max(row.height, max(
                         row_cell.height for row_cell in ending_cells))
-                    row_bottom_y = cell.position_y + row.height
+                    row_bottom_y = row.position_y + row.height
             else:
                 row_bottom_y = row.position_y
                 row.height = 0
+
+            if not baseline_cells:
+                row.baseline = row_bottom_y
 
             # Add extra padding to make the cells the same height as the row
             # and honor vertical-align
@@ -203,7 +230,22 @@ def table_layout(context, table, max_position_y, skip_stack,
             # Break if this row overflows the page, unless there is no
             # other content on the page.
             if next_position_y > max_position_y and not page_is_empty:
-                resume_at = (index_row, None)
+                if new_group_children:
+                    previous_row = new_group_children[-1]
+                    page_break = block_level_page_break(previous_row, row)
+                    if page_break == 'avoid':
+                        earlier_page_break = find_earlier_page_break(
+                            new_group_children, absolute_boxes, fixed_boxes)
+                        if earlier_page_break:
+                            new_group_children, resume_at = earlier_page_break
+                            break
+                    else:
+                        resume_at = (index_row, None)
+                        break
+                if original_page_is_empty:
+                    resume_at = (index_row, None)
+                else:
+                    return None, None, next_page
                 break
 
             position_y = next_position_y
@@ -212,14 +254,14 @@ def table_layout(context, table, max_position_y, skip_stack,
 
         # Do not keep the row group if we made a page break
         # before any of its rows or with 'avoid'
-        if resume_at and (
+        if resume_at and not original_page_is_empty and (
                 group.style['break_inside'] in ('avoid', 'avoid-page') or
                 not new_group_children):
-            return None, None
+            return None, None, next_page
 
-        group = group.copy_with_children(
-            new_group_children,
-            is_start=is_group_start, is_end=resume_at is None)
+        group = group.copy_with_children(new_group_children)
+        group.remove_decoration(
+            start=not is_group_start, end=resume_at is not None)
 
         # Set missing baselines in a second loop because of rowspan
         for row in group.children:
@@ -236,7 +278,7 @@ def table_layout(context, table, max_position_y, skip_stack,
             # The last border spacing is outside of the group.
             group.height -= border_spacing_y
 
-        return group, resume_at
+        return group, resume_at, next_page
 
     def body_groups_layout(skip_stack, position_y, max_position_y,
                            page_is_empty):
@@ -246,15 +288,42 @@ def table_layout(context, table, max_position_y, skip_stack,
             skip, skip_stack = skip_stack
         new_table_children = []
         resume_at = None
-        for index_group, group in table.enumerate_skip(skip):
+        next_page = {'break': 'any', 'page': None}
+
+        for i, group in enumerate(table.children[skip:]):
             if group.is_header or group.is_footer:
                 continue
-            new_group, resume_at = group_layout(
+
+            # Index is useless for headers and footers, as we never want to
+            # break pages after the header or before the footer.
+            index_group = i + skip
+            group.index = index_group
+
+            if new_table_children:
+                page_break = block_level_page_break(
+                    new_table_children[-1], group)
+                if page_break in ('page', 'recto', 'verso', 'left', 'right'):
+                    next_page['break'] = page_break
+                    resume_at = (index_group, None)
+                    break
+
+            new_group, resume_at, next_page = group_layout(
                 group, position_y, max_position_y, page_is_empty, skip_stack)
             skip_stack = None
 
             if new_group is None:
-                resume_at = (index_group, None)
+                if new_table_children:
+                    previous_group = new_table_children[-1]
+                    page_break = block_level_page_break(previous_group, group)
+                    if page_break == 'avoid':
+                        earlier_page_break = find_earlier_page_break(
+                            new_table_children, absolute_boxes, fixed_boxes)
+                        if earlier_page_break is not None:
+                            new_table_children, resume_at = earlier_page_break
+                            break
+                    resume_at = (index_group, None)
+                else:
+                    return None, None, next_page, position_y
                 break
 
             new_table_children.append(new_group)
@@ -264,17 +333,34 @@ def table_layout(context, table, max_position_y, skip_stack,
             if resume_at:
                 resume_at = (index_group, resume_at)
                 break
-        return new_table_children, resume_at, position_y
+
+        return new_table_children, resume_at, next_page, position_y
 
     # Layout for row groups, rows and cells
     position_y = table.content_box_y() + border_spacing_y
     initial_position_y = position_y
+    table_rows = [
+        child for child in table.children
+        if not child.is_header and not child.is_footer]
 
     def all_groups_layout():
+        # If the page is not empty, we try to render the header and the footer
+        # on it. If the table does not fit on the page, we try to render it on
+        # the next page.
+
+        # If the page is empty and the header and footer are too big, there
+        # are not rendered. If no row can be rendered because of the header and
+        # the footer, the header and/or the footer are not rendered.
+
+        if page_is_empty:
+            header_footer_max_position_y = max_position_y
+        else:
+            header_footer_max_position_y = float('inf')
+
         if table.children and table.children[0].is_header:
             header = table.children[0]
-            header, resume_at = group_layout(
-                header, position_y, max_position_y,
+            header, resume_at, next_page = group_layout(
+                header, position_y, header_footer_max_position_y,
                 skip_stack=None, page_is_empty=False)
             if header and not resume_at:
                 header_height = header.height + border_spacing_y
@@ -285,8 +371,8 @@ def table_layout(context, table, max_position_y, skip_stack,
 
         if table.children and table.children[-1].is_footer:
             footer = table.children[-1]
-            footer, resume_at = group_layout(
-                footer, position_y, max_position_y,
+            footer, resume_at, next_page = group_layout(
+                footer, position_y, header_footer_max_position_y,
                 skip_stack=None, page_is_empty=False)
             if footer and not resume_at:
                 footer_height = footer.height + border_spacing_y
@@ -295,56 +381,71 @@ def table_layout(context, table, max_position_y, skip_stack,
         else:
             footer = None
 
+        # Don't remove headers and footers if breaks are avoided in line groups
+        skip = skip_stack[0] if skip_stack else 0
+        avoid_breaks = False
+        for group in table.children[skip:]:
+            if not group.is_header and not group.is_footer:
+                avoid_breaks = (
+                    group.style['break_inside'] in ('avoid', 'avoid-page'))
+                break
+
         if header and footer:
             # Try with both the header and footer
-            new_table_children, resume_at, end_position_y = body_groups_layout(
-                skip_stack,
-                position_y=position_y + header_height,
-                max_position_y=max_position_y - footer_height,
-                page_is_empty=False)
-            if new_table_children or not page_is_empty:
+            new_table_children, resume_at, next_page, end_position_y = (
+                body_groups_layout(
+                    skip_stack,
+                    position_y=position_y + header_height,
+                    max_position_y=max_position_y - footer_height,
+                    page_is_empty=avoid_breaks))
+            if new_table_children or not table_rows or not page_is_empty:
                 footer.translate(dy=end_position_y - footer.position_y)
                 end_position_y += footer_height
                 return (header, new_table_children, footer,
-                        end_position_y, resume_at)
+                        end_position_y, resume_at, next_page)
             else:
                 # We could not fit any content, drop the footer
                 footer = None
 
         if header and not footer:
             # Try with just the header
-            new_table_children, resume_at, end_position_y = body_groups_layout(
-                skip_stack,
-                position_y=position_y + header_height,
-                max_position_y=max_position_y,
-                page_is_empty=False)
-            if new_table_children or not page_is_empty:
+            new_table_children, resume_at, next_page, end_position_y = (
+                body_groups_layout(
+                    skip_stack,
+                    position_y=position_y + header_height,
+                    max_position_y=max_position_y,
+                    page_is_empty=avoid_breaks))
+            if new_table_children or not table_rows or not page_is_empty:
                 return (header, new_table_children, footer,
-                        end_position_y, resume_at)
+                        end_position_y, resume_at, next_page)
             else:
-                # We could not fit any content, drop the footer
+                # We could not fit any content, drop the header
                 header = None
 
         if footer and not header:
             # Try with just the footer
-            new_table_children, resume_at, end_position_y = body_groups_layout(
-                skip_stack,
-                position_y=position_y,
-                max_position_y=max_position_y - footer_height,
-                page_is_empty=False)
-            if new_table_children or not page_is_empty:
+            new_table_children, resume_at, next_page, end_position_y = (
+                body_groups_layout(
+                    skip_stack,
+                    position_y=position_y,
+                    max_position_y=max_position_y - footer_height,
+                    page_is_empty=avoid_breaks))
+            if new_table_children or not table_rows or not page_is_empty:
                 footer.translate(dy=end_position_y - footer.position_y)
                 end_position_y += footer_height
                 return (header, new_table_children, footer,
-                        end_position_y, resume_at)
+                        end_position_y, resume_at, next_page)
             else:
                 # We could not fit any content, drop the footer
                 footer = None
 
         assert not (header or footer)
-        new_table_children, resume_at, end_position_y = body_groups_layout(
-            skip_stack, position_y, max_position_y, page_is_empty)
-        return header, new_table_children, footer, end_position_y, resume_at
+        new_table_children, resume_at, next_page, end_position_y = (
+            body_groups_layout(
+                skip_stack, position_y, max_position_y, page_is_empty))
+        return (
+            header, new_table_children, footer, end_position_y, resume_at,
+            next_page)
 
     def get_column_cells(table, column):
         """Closure getting the column cells."""
@@ -355,13 +456,23 @@ def table_layout(context, table, max_position_y, skip_stack,
             for cell in row.children
             if cell.grid_x == column.grid_x]
 
-    header, new_table_children, footer, position_y, resume_at = \
+    header, new_table_children, footer, position_y, resume_at, next_page = \
         all_groups_layout()
+
+    if new_table_children is None:
+        assert resume_at is None
+        table = None
+        adjoining_margins = []
+        collapsing_through = False
+        return (
+            table, resume_at, next_page, adjoining_margins, collapsing_through)
+
     table = table.copy_with_children(
         ([header] if header is not None else []) +
         new_table_children +
-        ([footer] if footer is not None else []),
-        is_start=skip_stack is None, is_end=resume_at is None)
+        ([footer] if footer is not None else []))
+    table.remove_decoration(
+        start=skip_stack is not None, end=resume_at is not None)
     if table.style['border_collapse'] == 'collapse':
         table.skipped_rows = skipped_rows
 
@@ -399,10 +510,8 @@ def table_layout(context, table, max_position_y, skip_stack,
         group.width = last.position_x + last.width - first.position_x
         group.height = columns_height
 
-    next_page = {'break': 'any', 'page': table.style['page']}
     if resume_at and not page_is_empty and (
-            table.style['break_inside'] in ('avoid', 'avoid-page') or
-            not new_table_children):
+            table.style['break_inside'] in ('avoid', 'avoid-page')):
         table = None
         resume_at = None
     adjoining_margins = []
@@ -570,6 +679,11 @@ def auto_table_layout(context, box, containing_block):
             min_content_specified_guess[i] = column_min_content_widths[i]
 
     if assignable_width <= sum(max_content_guess):
+        # Default values shouldn't be used, but we never know.
+        # See https://github.com/Kozea/WeasyPrint/issues/770
+        lower_guess = guesses[0]
+        upper_guess = guesses[-1]
+
         # We have to work around floating point rounding errors here.
         # The 1e-9 value comes from PEP 485.
         for guess in guesses:
@@ -583,9 +697,10 @@ def auto_table_layout(context, box, containing_block):
             else:
                 break
         if upper_guess == lower_guess:
+            # TODO: Uncomment the assert when bugs #770 and #628 are closed
             # Equivalent to "assert assignable_width == sum(upper_guess)"
-            assert abs(assignable_width - sum(upper_guess)) <= (
-                assignable_width * 1e-9)
+            # assert abs(assignable_width - sum(upper_guess)) <= (
+            #     assignable_width * 1e-9)
             table.column_widths = upper_guess
         else:
             added_widths = [
@@ -596,140 +711,21 @@ def auto_table_layout(context, box, containing_block):
                 lower_guess[i] + added_widths[i] * available_ratio
                 for i in range(len(grid))]
     else:
-        # Distribute available width to columns
-        # http://dbaron.org/css/intrinsic/#distributetocols
         table.column_widths = max_content_guess
         excess_width = assignable_width - sum(max_content_guess)
-
-        # First group
-        columns = [
-            (i, column) for i, column in enumerate(grid)
-            if not constrainedness[i] and
-            column_intrinsic_percentages[i] == 0 and
-            any(max_content_width(context, cell) for cell in column if cell)]
-        if columns:
-            widths = [
-                max(max_content_width(context, cell)
-                    for cell in column if cell)
-                for i, column in columns]
-            current_widths = [
-                table.column_widths[i] for i, column in columns]
-            differences = [
-                max(0, width[0] - width[1])
-                for width in zip(widths, current_widths)]
-            if sum(differences) > excess_width:
-                differences = [
-                    difference / sum(differences) * excess_width
-                    for difference in differences]
-            excess_width -= sum(differences)
-            for i, difference in enumerate(differences):
-                table.column_widths[columns[i][0]] += difference
-        if excess_width <= 0:
-            return
-
-        # Second group
-        columns = [
-            i for i, column in enumerate(grid)
-            if not constrainedness[i] and
-            column_intrinsic_percentages[i] == 0]
-        if columns:
-            for i in columns:
-                table.column_widths[i] += excess_width / len(columns)
-            return
-
-        # Third group
-        columns = [
-            (i, column) for i, column in enumerate(grid)
-            if constrainedness[i] and
-            column_intrinsic_percentages[i] == 0 and
-            any(max_content_width(context, cell) for cell in column if cell)]
-        if columns:
-            widths = [
-                max(max_content_width(context, cell)
-                    for cell in column if cell)
-                for i, column in columns]
-            current_widths = [
-                table.column_widths[i] for i, column in columns]
-            differences = [
-                max(0, width[0] - width[1])
-                for width in zip(widths, current_widths)]
-            if sum(differences) > excess_width:
-                differences = [
-                    difference / sum(differences) * excess_width
-                    for difference in differences]
-            excess_width -= sum(differences)
-            for i, difference in enumerate(differences):
-                table.column_widths[columns[i][0]] += difference
-        if excess_width <= 0:
-            return
-
-        # Fourth group
-        columns = [
-            (i, column) for i, column in enumerate(grid)
-            if column_intrinsic_percentages[i] > 0]
-        if columns:
-            fixed_width = sum(
-                table.column_widths[j] for j in range(len(grid))
-                if j not in [i for i, column in columns])
-            percentage_width = sum(
-                column_intrinsic_percentages[i]
-                for i, column in columns)
-            if fixed_width and percentage_width >= 100:
-                # Sum of the percentages are greater than 100%
-                ratio = excess_width
-            elif fixed_width == 0:
-                # No fixed width, let's take the whole excess width
-                ratio = excess_width
+        excess_width = distribute_excess_width(
+            context, grid, excess_width, table.column_widths, constrainedness,
+            column_intrinsic_percentages, column_max_content_widths)
+        if excess_width:
+            if table_min_content_width < table.width - excess_width:
+                # Reduce the width of the size from the excess width that has
+                # not been distributed.
+                table.width -= excess_width
             else:
-                ratio = fixed_width / (100 - percentage_width)
-
-            widths = [
-                column_intrinsic_percentages[i] * ratio
-                for i, column in columns]
-            current_widths = [
-                table.column_widths[i] for i, column in columns]
-            # Allow to reduce the size of the columns to respect the percentage
-            differences = [
-                width[0] - width[1]
-                for width in zip(widths, current_widths)]
-            if sum(differences) > excess_width:
-                differences = [
-                    difference / sum(differences) * excess_width
-                    for difference in differences]
-            excess_width -= sum(differences)
-            for i, difference in enumerate(differences):
-                table.column_widths[columns[i][0]] += difference
-        if excess_width <= 0:
-            return
-
-        # Bonus: we've tried our best to distribute the extra size, but we
-        # failed. Instead of blindly distributing the size among all the colums
-        # and breaking all the rules (as said in the draft), let's try to
-        # change the columns with no constraint at all, then resize the table,
-        # and at least break the rules to make the columns fill the table.
-
-        # Fifth group, part 1
-        columns = [
-            i for i, column in enumerate(grid)
-            if any(column) and
-            column_intrinsic_percentages[i] == 0 and
-            not any(
-                max_content_width(context, cell)
-                for cell in column if cell)]
-        if columns:
-            for i in columns:
-                table.column_widths[i] += excess_width / len(columns)
-            return
-
-        if table_min_content_width < table.width - excess_width:
-            # Reduce the width of the size from the excess width that has not
-            # been distributed.
-            table.width -= excess_width
-        else:
-            # Fifth group, part 2, aka desperately break the rules
-            columns = [i for i, column in enumerate(grid) if any(column)]
-            for i in columns:
-                table.column_widths[i] += excess_width / len(columns)
+                # Break rules
+                columns = [i for i, column in enumerate(grid) if any(column)]
+                for i in columns:
+                    table.column_widths[i] += excess_width / len(columns)
 
 
 def table_wrapper_width(context, wrapper, containing_block):
@@ -766,6 +762,8 @@ def find_in_flow_baseline(box, last=False, baseline_types=(boxes.LineBox,)):
     Return the absolute Y position for the first (or last) in-flow baseline
     if any, or None.
     """
+    # TODO: synthetize baseline when needed
+    # See https://www.w3.org/TR/css-align-3/#synthesize-baseline
     if isinstance(box, baseline_types):
         return box.position_y + box.baseline
     if isinstance(box, boxes.ParentBox) and not isinstance(
@@ -776,3 +774,129 @@ def find_in_flow_baseline(box, last=False, baseline_types=(boxes.LineBox,)):
                 result = find_in_flow_baseline(child, last, baseline_types)
                 if result is not None:
                     return result
+
+
+def distribute_excess_width(context, grid, excess_width, column_widths,
+                            constrainedness, column_intrinsic_percentages,
+                            column_max_content_widths,
+                            column_slice=slice(0, None)):
+    """Distribute available width to columns.
+
+    Return excess width left when it's impossible without breaking rules.
+
+    See http://dbaron.org/css/intrinsic/#distributetocols
+
+    """
+    # First group
+    columns = [
+        (i + column_slice.start, column)
+        for i, column in enumerate(grid[column_slice])
+        if not constrainedness[i + column_slice.start] and
+        column_intrinsic_percentages[i + column_slice.start] == 0 and
+        column_max_content_widths[i + column_slice.start] > 0]
+    if columns:
+        current_widths = [column_widths[i] for i, column in columns]
+        differences = [
+            max(0, width[0] - width[1])
+            for width in zip(column_max_content_widths, current_widths)]
+        if sum(differences) > excess_width:
+            differences = [
+                difference / sum(differences) * excess_width
+                for difference in differences]
+        excess_width -= sum(differences)
+        for i, difference in enumerate(differences):
+            column_widths[columns[i][0]] += difference
+    if excess_width <= 0:
+        return
+
+    # Second group
+    columns = [
+        i + column_slice.start for i, column in enumerate(grid[column_slice])
+        if not constrainedness[i + column_slice.start] and
+        column_intrinsic_percentages[i + column_slice.start] == 0]
+    if columns:
+        for i in columns:
+            column_widths[i] += excess_width / len(columns)
+        return
+
+    # Third group
+    columns = [
+        (i + column_slice.start, column)
+        for i, column in enumerate(grid[column_slice])
+        if constrainedness[i + column_slice.start] and
+        column_intrinsic_percentages[i + column_slice.start] == 0 and
+        column_max_content_widths[i + column_slice.start] > 0]
+    if columns:
+        current_widths = [column_widths[i] for i, column in columns]
+        differences = [
+            max(0, width[0] - width[1])
+            for width in zip(column_max_content_widths, current_widths)]
+        if sum(differences) > excess_width:
+            differences = [
+                difference / sum(differences) * excess_width
+                for difference in differences]
+        excess_width -= sum(differences)
+        for i, difference in enumerate(differences):
+            column_widths[columns[i][0]] += difference
+    if excess_width <= 0:
+        return
+
+    # Fourth group
+    columns = [
+        (i + column_slice.start, column)
+        for i, column in enumerate(grid[column_slice])
+        if column_intrinsic_percentages[i + column_slice.start] > 0]
+    if columns:
+        fixed_width = sum(
+            column_widths[j] for j in range(len(grid))
+            if j not in [i for i, column in columns])
+        percentage_width = sum(
+            column_intrinsic_percentages[i]
+            for i, column in columns)
+        if fixed_width and percentage_width >= 100:
+            # Sum of the percentages are greater than 100%
+            ratio = excess_width
+        elif fixed_width == 0:
+            # No fixed width, let's take the whole excess width
+            ratio = excess_width
+        else:
+            ratio = fixed_width / (100 - percentage_width)
+
+        widths = [
+            column_intrinsic_percentages[i] * ratio for i, column in columns]
+        current_widths = [column_widths[i] for i, column in columns]
+        # Allow to reduce the size of the columns to respect the percentage
+        differences = [
+            width[0] - width[1]
+            for width in zip(widths, current_widths)]
+        if sum(differences) > excess_width:
+            differences = [
+                difference / sum(differences) * excess_width
+                for difference in differences]
+        excess_width -= sum(differences)
+        for i, difference in enumerate(differences):
+            column_widths[columns[i][0]] += difference
+    if excess_width <= 0:
+        return
+
+    # Bonus: we've tried our best to distribute the extra size, but we
+    # failed. Instead of blindly distributing the size among all the colums
+    # and breaking all the rules (as said in the draft), let's try to
+    # change the columns with no constraint at all, then resize the table,
+    # and at least break the rules to make the columns fill the table.
+
+    # Fifth group, part 1
+    columns = [
+        i + column_slice.start for i, column in enumerate(grid[column_slice])
+        if any(column) and
+        column_intrinsic_percentages[i + column_slice.start] == 0 and
+        not any(
+            max_content_width(context, cell)
+            for cell in column if cell)]
+    if columns:
+        for i in columns:
+            column_widths[i] += excess_width / len(columns)
+        return
+
+    # Fifth group, part 2, aka abort
+    return excess_width

@@ -13,18 +13,15 @@
 
     See http://www.w3.org/TR/CSS21/cascade.html#used-value
 
-    :copyright: Copyright 2011-2014 Simon Sapin and contributors, see AUTHORS.
-    :license: BSD, see LICENSE for details.
-
 """
 
 from collections import defaultdict
 
-from .absolute import absolute_box_layout
-from .pages import make_all_pages, make_margin_boxes
-from .backgrounds import layout_backgrounds
 from ..formatting_structure import boxes
-from ..logger import LOGGER
+from ..logger import PROGRESS_LOGGER
+from .absolute import absolute_box_layout, absolute_layout
+from .backgrounds import layout_backgrounds
+from .pages import make_all_pages, make_margin_boxes
 
 
 def initialize_page_maker(context, root_box):
@@ -85,23 +82,27 @@ def layout_fixed_boxes(context, pages, containing_page):
         for box in page.fixed_boxes:
             # As replaced boxes are never copied during layout, ensure that we
             # have different boxes (with a possibly different layout) for
-            # each pages
+            # each pages.
             if isinstance(box, boxes.ReplacedBox):
                 box = box.copy()
-            # Use an empty list as last argument because the fixed boxes in the
-            # fixed box has already been added to page.fixed_boxes, we don't
-            # want to get them again
-            yield absolute_box_layout(context, box, containing_page, [])
+            # Absolute boxes in fixed boxes are rendered as fixed boxes'
+            # children, even when they are fixed themselves.
+            absolute_boxes = []
+            yield absolute_box_layout(
+                context, box, containing_page, absolute_boxes)
+            while absolute_boxes:
+                new_absolute_boxes = []
+                for box in absolute_boxes:
+                    absolute_layout(
+                        context, box, containing_page, new_absolute_boxes)
+                absolute_boxes = new_absolute_boxes
 
 
-def layout_document(enable_hinting, style_for, get_image_from_uri, root_box,
-                    font_config, html, cascaded_styles, computed_styles,
-                    target_collector, max_loops=8):
+def layout_document(html, root_box, context, max_loops=8):
     """Lay out the whole document.
 
     This includes line breaks, page breaks, absolute size and position for all
-    boxes.
-    Page based counters might require multiple passes
+    boxes. Page based counters might require multiple passes.
 
     :param root_box: root of the box tree (formatting structure of the html)
                      the pages' boxes are created from that tree, i.e. this
@@ -109,27 +110,23 @@ def layout_document(enable_hinting, style_for, get_image_from_uri, root_box,
     :returns: a list of laid out Page objects.
 
     """
-    context = LayoutContext(
-        enable_hinting, style_for, get_image_from_uri, font_config,
-        target_collector)
-    # initialize context.page_maker
     initialize_page_maker(context, root_box)
     pages = []
     actual_total_pages = 0
 
     for loop in range(max_loops):
         if loop > 0:
-            LOGGER.info('Step 5 - Creating layout - Repagination #%i' % loop)
+            PROGRESS_LOGGER.info(
+                'Step 5 - Creating layout - Repagination #%i' % loop)
 
         initial_total_pages = actual_total_pages
-        pages = list(make_all_pages(
-            context, root_box, html, cascaded_styles, computed_styles, pages))
+        pages = list(make_all_pages(context, root_box, html, pages))
         actual_total_pages = len(pages)
 
         # Check whether another round is required
         reloop_content = False
         reloop_pages = False
-        for idx, page_data in enumerate(context.page_maker):
+        for page_data in context.page_maker:
             # Update pages
             _, _, _, page_state, remake_state = page_data
             page_counter_values = page_state[1]
@@ -181,22 +178,26 @@ def layout_document(enable_hinting, style_for, get_image_from_uri, root_box,
         state = context.page_maker[context.current_page][3]
         page.children = (root,) + tuple(
             make_margin_boxes(context, page, state))
-        layout_backgrounds(page, get_image_from_uri)
+        layout_backgrounds(page, context.get_image_from_uri)
         yield page
 
 
-class LayoutContext(object):
+class LayoutContext:
     def __init__(self, enable_hinting, style_for, get_image_from_uri,
-                 font_config, target_collector):
+                 font_config, counter_style, target_collector):
         self.enable_hinting = enable_hinting
         self.style_for = style_for
         self.get_image_from_uri = get_image_from_uri
         self.font_config = font_config
+        self.counter_style = counter_style
         self.target_collector = target_collector
         self._excluded_shapes_lists = []
         self.excluded_shapes = None  # Not initialized yet
         self.string_set = defaultdict(lambda: defaultdict(lambda: list()))
+        self.running_elements = defaultdict(
+            lambda: defaultdict(lambda: list()))
         self.current_page = None
+        self.forced_break = False
 
         # Cache
         self.strut_layouts = {}
@@ -223,28 +224,40 @@ class LayoutContext(object):
             self.excluded_shapes = None
 
     def get_string_set_for(self, page, name, keyword='first'):
-        """Resolve value of string function (as set by string set).
+        """Resolve value of string function."""
+        return self.get_string_or_element_for(
+            self.string_set, page, name, keyword)
+
+    def get_running_element_for(self, page, name, keyword='first'):
+        """Resolve value of element function."""
+        return self.get_string_or_element_for(
+            self.running_elements, page, name, keyword)
+
+    def get_string_or_element_for(self, store, page, name, keyword):
+        """Resolve value of string or element function.
 
         We'll have something like this that represents all assignments on a
         given page:
 
-        {1: [u'First Header'], 3: [u'Second Header'],
-         4: [u'Third Header', u'3.5th Header']}
+        {1: ['First Header'], 3: ['Second Header'],
+         4: ['Third Header', '3.5th Header']}
 
         Value depends on current page.
         http://dev.w3.org/csswg/css-gcpm/#funcdef-string
 
-        :param name: the name of the named string.
-        :param keyword: indicates which value of the named string to use.
-                        Default is the first assignment on the current page
-                        else the most recent assignment (entry value)
-        :returns: text
+        :param store: dictionary where the resolved value is stored.
+        :param page: current page.
+        :param name: name of the named string or running element.
+        :param keyword: indicates which value of the named string or running
+                        element to use. Default is the first assignment on the
+                        current page else the most recent assignment.
+        :returns: text for string set, box for running element
 
         """
-        if self.current_page in self.string_set[name]:
+        if self.current_page in store[name]:
             # A value was assigned on this page
-            first_string = self.string_set[name][self.current_page][0]
-            last_string = self.string_set[name][self.current_page][-1]
+            first_string = store[name][self.current_page][0]
+            last_string = store[name][self.current_page][-1]
             if keyword == 'first':
                 return first_string
             elif keyword == 'start':
@@ -261,8 +274,9 @@ class LayoutContext(object):
                     break
             elif keyword == 'last':
                 return last_string
+            elif keyword == 'first-except':
+                return
         # Search backwards through previous pages
         for previous_page in range(self.current_page - 1, 0, -1):
-            if previous_page in self.string_set[name]:
-                return self.string_set[name][previous_page][-1]
-        return ''
+            if previous_page in store[name]:
+                return store[name][previous_page][-1]

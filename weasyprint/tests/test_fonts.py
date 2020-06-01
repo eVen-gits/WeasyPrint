@@ -4,9 +4,6 @@
 
     Test the fonts features.
 
-    :copyright: Copyright 2011-2016 Simon Sapin and contributors, see AUTHORS.
-    :license: BSD, see LICENSE for details.
-
 """
 
 from .test_boxes import render_pages

@@ -3,17 +3,17 @@ Installing
 
 WeasyPrint |version| depends on:
 
-* CPython_ ≥ 3.4.0
+* CPython_ ≥ 3.5.0
 * cairo_ ≥ 1.15.4 [#]_
 * Pango_ ≥ 1.38.0 [#]_
-* setuptools_ ≥ 30.3.0
+* setuptools_ ≥ 30.3.0 [#]_
 * CFFI_ ≥ 0.6
 * html5lib_ ≥ 0.999999999
 * cairocffi_ ≥ 0.9.0
-* tinycss2_ ≥ 0.5
+* tinycss2_ ≥ 1.0.0
 * cssselect2_ ≥ 0.1
-* CairoSVG_ ≥ 1.0.20
-* Pyphen_ ≥ 0.8
+* CairoSVG_ ≥ 2.4.0
+* Pyphen_ ≥ 0.9.1
 * GDK-PixBuf_ ≥ 2.25.0 [#]_
 
 .. _CPython: http://www.python.org/
@@ -34,16 +34,15 @@ Python, cairo, Pango and GDK-PixBuf need to be installed separately. See
 platform-specific instructions for :ref:`Linux <linux>`, :ref:`macOS <macos>`
 and :ref:`Windows <windows>` below.
 
-Install WeasyPrint with pip_.
-This will automatically install most of dependencies.
-You probably need either virtualenv_ (recommended) or using ``sudo``.
+Install WeasyPrint with pip_. This will automatically install most of
+dependencies. You probably need either a virtual environment (venv,
+recommended) or using ``sudo``.
 
-.. _virtualenv: http://www.virtualenv.org/
 .. _pip: http://pip-installer.org/
 
 .. code-block:: sh
 
-    virtualenv ./venv
+    python3 -m venv ./venv
     . ./venv/bin/activate
     pip install WeasyPrint
 
@@ -73,7 +72,7 @@ and open your browser at http://127.0.0.1:5000/.
 
 If everything goes well, you’re ready to :doc:`start using </tutorial>`
 WeasyPrint! Otherwise, please copy the full error message and
-`report the problem <http://weasyprint.org/community/>`_.
+`report the problem <https://github.com/Kozea/WeasyPrint/issues/>`_.
 
 .. [#] cairo ≥ 1.15.4 is best but older versions may work too. The test suite
        passes on cairo 1.14, and passes with some tests marked as “expected
@@ -86,6 +85,10 @@ WeasyPrint! Otherwise, please copy the full error message and
 
 .. [#] pango ≥ 1.29.3 is required, but 1.38.0 is needed to handle `@font-face`
        CSS rules.
+
+.. [#] setuptools ≥ 30.3.0 is required to install WeasyPrint from wheel, but
+       39.2.0 is required to build the package or install from
+       source. setuptools < 40.8.0 will not include the LICENSE file.
 
 .. [#] Without it, PNG and SVG are the only supported image formats.
        JPEG, GIF and others are not available.
@@ -105,23 +108,30 @@ CFFI needs *libffi* with development files. On Debian, the package is called
 ``libffi-dev``.
 
 If your favorite system is not listed here but you know the package names,
-`tell us <http://weasyprint.org/community/>`_ so we can add it here.
+`tell us <http://weasyprint.org/about/>`_ so we can add it here.
 
 Debian / Ubuntu
 ~~~~~~~~~~~~~~~
 
-Debian 9.0 Stretch or newer, Ubuntu 16.04 Xenial or newer:
+WeasyPrint is `packaged for Debian 11 or newer
+<https://packages.debian.org/search?searchon=names&keywords=weasyprint>`_.
+
+You can install it with pip on Debian 10 Buster or newer, or on Ubuntu 18.04
+Bionic Beaver or newer, after installing the following packages:
 
 .. code-block:: sh
 
     sudo apt-get install build-essential python3-dev python3-pip python3-setuptools python3-wheel python3-cffi libcairo2 libpango-1.0-0 libpangocairo-1.0-0 libgdk-pixbuf2.0-0 libffi-dev shared-mime-info
 
+WeasyPrint may work under previous releases of Debian or Ubuntu, but they often
+provide an old version of Cairo that may limit WeasyPrint's features [1]_.
+
 Fedora
 ~~~~~~
 
 WeasyPrint is `packaged for Fedora
-<https://apps.fedoraproject.org/packages/weasyprint>`_, but you can install it
-with pip after installing the following packages:
+<http://rpms.remirepo.net/rpmphp/zoom.php?rpm=weasyprint>`_, but you can
+install it with pip after installing the following packages:
 
 .. code-block:: sh
 
@@ -150,20 +160,63 @@ install it with pip after installing the following packages:
     emerge pip setuptools wheel cairo pango gdk-pixbuf cffi
 
 
+Alpine
+~~~~~~
+
+For Alpine Linux 3.6 or newer:
+
+.. code-block:: sh
+
+    apk --update --upgrade add gcc musl-dev jpeg-dev zlib-dev libffi-dev cairo-dev pango-dev gdk-pixbuf-dev
+
+.. note::
+
+    Some Alpine images do not resolv the library path via ctypes.utils.find_library. So if you get
+    ``OSError: dlopen() failed to load a library: cairo / cairo-2 / cairo-gobject-2``
+    then change find_library and open the library directly:
+    ``/usr/local/lib/python3.7/site-packages/cairocffi/__init__.py``
+
+    .. code-block:: python
+
+        try:
+            lib = ffi.dlopen(name)
+            if lib:
+        ...
+        cairo = dlopen(ffi, 'libcairo.so.2')
+
+
 .. _macos:
 
 macOS
 -----
 
 WeasyPrint is automatically installed and tested on virtual macOS machines. The
-official installation method relies on Homebrew:
+official installation method relies on Homebrew. Install Homebrew if you haven't already:
+
+.. code-block:: sh
+
+    /usr/bin/ruby -e "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/master/install)"
+
+Install Python, cairo, Pango and GDK-PixBuf using Homebrew:
 
 .. code-block:: sh
 
     brew install python3 cairo pango gdk-pixbuf libffi
 
 Don't forget to use the `pip3` command to install WeasyPrint, as `pip` may be
-using the version of Python installed with macOS.
+using the version of Python installed with macOS:
+
+.. code-block:: sh
+
+    pip3 install WeasyPrint
+
+If you get the `Fontconfig error: Cannot load default config file` message,
+then try reinstalling fontconfig:
+
+.. code-block:: sh
+
+    brew uninstall fontconfig
+    brew install fontconfig
 
 You can also try with Macports, but please notice that this solution is not
 tested and thus not recommended (**also known as "you're on your own and may
@@ -184,7 +237,7 @@ Dear Windows user, please follow these steps carefully.
 Really carefully. Don’t cheat.
 
 Besides a proper Python installation and a few Python packages, WeasyPrint
-needs the Pango, Cairo and GDK-PixBuf libraries. They are required for the
+needs the Pango, cairo and GDK-PixBuf libraries. They are required for the
 graphical stuff: Text and image rendering.  These libraries aren't Python
 packages. They are part of `GTK+ <https://en.wikipedia.org/wiki/GTK+>`_
 (formerly known as GIMP Toolkit), and must be installed separately.
@@ -193,9 +246,9 @@ The following installation instructions for the GTK+ libraries don't work on
 Windows XP. That means: Windows Vista or later is required.
 
 Of course you can decide to install ancient WeasyPrint versions with an
-erstwhile Python, combine it with outdated GTK+ libraries on any Windows
-version you like, but if you decide to do that **you’re on your own, don’t even
-try to report an issue, kittens will die because of you.**
+erstwhile Python versions, combine it with outdated GTK+ libraries on any
+Windows version you like, but if you decide to do that **you’re on your own,
+don’t even try to report an issue, kittens will die because of you.**
 
 Step 1 - Install Python
 ~~~~~~~~~~~~~~~~~~~~~~~
@@ -239,19 +292,18 @@ There's one thing you **must** observe:
 
 If you mismatch the bitness, the warning about kittens dying applies.
 
-In case you forgot which Python you installed, ask Python (in the console
-window):
+In case you forgot which Python architecture you installed, you can find out by
+running the following command in command prompt:
 
 .. code-block:: console
 
     python --version --version
 
-Having installed Python 64 bit you can either use the :ref:`GTK+ 64 Bit
+If your python architecture is 64 bit you can either use the :ref:`GTK+ 64 Bit
 Installer <gtk64installer>` or install the 64-bit :ref:`GTK+ via MSYS2
 <msys2_gtk>`.
 
-On Windows 32 bit or if you decided to install Python 32 bit on your Windows 64
-bit machine you'll have to install the 32-bit :ref:`GTK+ via MSYS2
+If your python architecture is 32 bit you'll have to install the 32-bit :ref:`GTK+ via MSYS2
 <msys2_gtk>`.
 
 .. note::
@@ -366,7 +418,7 @@ and provided by Tom Schoonjans.
 .. note::
 
     Checking the option doesn't insert the GTK-path at the beginning of your
-    system ``PATH``, but rather **appends** it. If there is alread another
+    system ``PATH``, but rather **appends** it. If there is already another
     (outdated) GTK on your ``PATH`` this will lead to unpleasant problems.
 
 In any case: When executing WeasyPrint the GTK libraries must be on its ``PATH``.
@@ -384,18 +436,19 @@ Open a fresh *Command Prompt* and execute
     python -m weasyprint http://weasyprint.org weasyprint.pdf
 
 If you get an error like ``OSError: dlopen() failed to load a library: cairo /
-cairo-2`` it’s probably because Cairo (or another GTK+ library mentioned in the
+cairo-2`` it’s probably because cairo (or another GTK+ library mentioned in the
 error message) is not properly available in the folders listed in your ``PATH``
 environment variable.
 
 Since you didn't cheat and followed the instructions the up-to-date and
 complete set of GTK libraries **must** be present and the error is an error.
 
-Lets find out. Enter the following command:
+Let's find out. Enter the following command:
 
 .. code-block:: console
 
     WHERE libcairo-2.dll
+    WHERE zlib1.dll
 
 This should respond with
 *path\\to\\recently\\installed\\gtk\\binaries\\libcairo-2.dll*, for example:
@@ -403,6 +456,7 @@ This should respond with
 .. code-block:: console
 
     C:\msys2\mingw64\bin\libcairo-2.dll
+    C:\Program Files\GTK3-Runtime Win64\bin\zlib1.dll
 
 If your system answers with *nothing found* or returns a filename not related
 to your recently-installed-gtk or lists more than one location and the first
@@ -413,7 +467,7 @@ Depending on the GTK installation route you took, the proper folder name is
 something along the lines of:
 
 * ``C:\msys2\mingw32\bin``
-* ``C:\msys2\mingw34\bin``
+* ``C:\msys2\mingw64\bin``
 * ``C:\Program Files\GTK3-Runtime Win64\bin``
 
 Determine the correct folder and execute the following commands, replace
@@ -425,13 +479,13 @@ Determine the correct folder and execute the following commands, replace
     SET PATH=%PROPER_GTK_FOLDER%;%PATH%
 
 This puts the appropriate GTK at the beginning of your ``PATH`` and
-it's files are the first found when WeasyPrint requires them.
+its files are the first found when WeasyPrint requires them.
 
 Call WeasyPrint again:
 
 .. code-block:: console
 
-    python -m weasyprint http://weasyprint.org weasyprint.pdf.
+    python -m weasyprint http://weasyprint.org weasyprint.pdf
 
 If the error is gone you should either fix your ``PATH`` permanently (via
 *Advanced System Settings*) or execute the above ``SET PATH`` command by
@@ -442,3 +496,10 @@ to open a `new issue <https://github.com/Kozea/WeasyPrint/issues/new>`_. You
 can also find extra help in this `bug report
 <https://github.com/Kozea/WeasyPrint/issues/589>`_. If you cheated, then, you
 know: Kittens already died.
+
+
+Other Options for Installation
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+There is a .NET wrapper for WeasyPrint available `here
+<https://github.com/balbarak/WeasyPrint-netcore>`_. 

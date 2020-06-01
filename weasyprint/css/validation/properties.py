@@ -5,21 +5,18 @@
     Validate properties.
     See http://www.w3.org/TR/CSS21/propidx.html and various CSS3 modules.
 
-    :copyright: Copyright 2011-2018 Simon Sapin and contributors, see AUTHORS.
-    :license: BSD, see LICENSE for details.
-
 """
 
 from tinycss2.color3 import parse_color
 
 from .. import computed_values
-from ...formatting_structure import counters
 from ..properties import KNOWN_PROPERTIES, Dimension
 from ..utils import (
-    InvalidValues, comma_separated_list, get_angle, get_content_list,
-    get_content_list_token, get_image, get_keyword, get_length, get_resolution,
-    get_single_keyword, get_url, parse_2d_position, parse_background_position,
-    parse_function, single_keyword, single_token)
+    InvalidValues, check_var_function, comma_separated_list, get_angle,
+    get_content_list, get_content_list_token, get_custom_ident, get_image,
+    get_keyword, get_length, get_resolution, get_single_keyword, get_url,
+    parse_2d_position, parse_function, parse_position, remove_whitespace,
+    single_keyword, single_token)
 
 PREFIX = '-weasy-'
 PROPRIETARY = set()
@@ -30,8 +27,6 @@ UNSTABLE = set()
 # returning a value or None for invalid.
 # For properties that take a single value, that value is returned by itself
 # instead of a list.
-# TODO: fix this: Also transform values: keyword and URLs are returned as
-# strings.
 PROPERTIES = {}
 
 
@@ -80,6 +75,10 @@ def property(property_name=None, proprietary=False, unstable=False,
 
 def validate_non_shorthand(base_url, name, tokens, required=False):
     """Default validator for non-shorthand properties."""
+    if name.startswith('--'):
+        # TODO: validate content
+        return ((name, tokens),)
+
     if not required and name not in KNOWN_PROPERTIES:
         hyphens_name = name.replace('_', '-')
         if hyphens_name in KNOWN_PROPERTIES:
@@ -89,6 +88,11 @@ def validate_non_shorthand(base_url, name, tokens, required=False):
 
     if not required and name not in PROPERTIES:
         raise InvalidValues('property not supported yet')
+
+    for token in tokens:
+        var_function = check_var_function(token)
+        if var_function:
+            return ((name, var_function),)
 
     keyword = get_single_keyword(tokens)
     if keyword in ('initial', 'inherit'):
@@ -117,7 +121,8 @@ def background_attachment(keyword):
 @property('border-right-color')
 @property('border-bottom-color')
 @property('border-left-color')
-@property('column-rule-color')
+@property('column-rule-color', unstable=True)
+@property('text-decoration-color')
 @single_token
 def other_colors(token):
     return parse_color(token)
@@ -179,9 +184,12 @@ def list_style_image(token, base_url):
                 return 'url', parsed_url[1][1]
 
 
-@property(unstable=True)
+@property()
 def transform_origin(tokens):
-    # TODO: parse (and ignore) a third value for Z.
+    """``transform-origin`` property validation."""
+    if len(tokens) == 3:
+        # Ignore third parameter as 3D transforms are ignored.
+        tokens = tokens[:2]
     return parse_2d_position(tokens)
 
 
@@ -189,7 +197,14 @@ def transform_origin(tokens):
 @comma_separated_list
 def background_position(tokens):
     """``background-position`` property validation."""
-    return parse_background_position(tokens)
+    return parse_position(tokens)
+
+
+@property()
+@comma_separated_list
+def object_position(tokens):
+    """``object-position`` property validation."""
+    return parse_position(tokens)
 
 
 @property()
@@ -275,7 +290,7 @@ def border_corner_radius(tokens):
 @property('border-right-style')
 @property('border-left-style')
 @property('border-bottom-style')
-@property('column-rule-style')
+@property('column-rule-style', unstable=True)
 @single_keyword
 def border_style(keyword):
     """``border-*-style`` properties validation."""
@@ -301,6 +316,20 @@ def break_inside(keyword):
     return keyword in ('auto', 'avoid', 'avoid-page', 'avoid-column')
 
 
+@property()
+@single_keyword
+def box_decoration_break(keyword):
+    """``box-decoration-break`` property validation."""
+    return keyword in ('slice', 'clone')
+
+
+@property(unstable=True)
+@single_keyword
+def margin_break(keyword):
+    """``margin-break`` property validation."""
+    return keyword in ('auto', 'keep', 'discard')
+
+
 @property(unstable=True)
 @single_token
 def page(token):
@@ -309,10 +338,10 @@ def page(token):
         return 'auto' if token.lower_value == 'auto' else token.value
 
 
-@property("bleed-left")
-@property("bleed-right")
-@property("bleed-top")
-@property("bleed-bottom")
+@property('bleed-left', unstable=True)
+@property('bleed-right', unstable=True)
+@property('bleed-top', unstable=True)
+@property('bleed-bottom', unstable=True)
 @single_token
 def bleed(token):
     """``bleed`` property validation."""
@@ -323,19 +352,19 @@ def bleed(token):
         return get_length(token)
 
 
-@property()
+@property(unstable=True)
 def marks(tokens):
     """``marks`` property validation."""
     if len(tokens) == 2:
-        keywords = [get_keyword(token) for token in tokens]
+        keywords = tuple(get_keyword(token) for token in tokens)
         if 'crop' in keywords and 'cross' in keywords:
             return keywords
     elif len(tokens) == 1:
         keyword = get_keyword(tokens[0])
         if keyword in ('crop', 'cross'):
-            return [keyword]
+            return (keyword,)
         elif keyword == 'none':
-            return 'none'
+            return ()
 
 
 @property('outline-style')
@@ -350,7 +379,7 @@ def outline_style(keyword):
 @property('border-right-width')
 @property('border-left-width')
 @property('border-bottom-width')
-@property('column-rule-width')
+@property('column-rule-width', unstable=True)
 @property('outline-width')
 @single_token
 def border_width(token):
@@ -363,7 +392,7 @@ def border_width(token):
         return keyword
 
 
-@property()
+@property(unstable=True)
 @single_token
 def column_width(token):
     """``column-width`` property validation."""
@@ -375,12 +404,11 @@ def column_width(token):
         return keyword
 
 
-@property()
+@property(unstable=True)
 @single_keyword
 def column_span(keyword):
     """``column-span`` property validation."""
-    # TODO: uncomment this when it is supported
-    # return keyword in ('all', 'none')
+    return keyword in ('all', 'none')
 
 
 @property()
@@ -468,6 +496,12 @@ def counter_reset(tokens):
     return counter(tokens, default_integer=0)
 
 
+@property()
+def counter_set(tokens):
+    """``counter-set`` property validation."""
+    return counter(tokens, default_integer=0)
+
+
 def counter(tokens, default_integer):
     """``counter-increment`` and ``counter-reset`` properties validation."""
     if get_single_keyword(tokens) == 'none':
@@ -526,7 +560,7 @@ def width_height(token):
         return 'auto'
 
 
-@property()
+@property(unstable=True)
 @single_token
 def column_gap(token):
     """Validation for the ``column-gap`` property."""
@@ -538,7 +572,7 @@ def column_gap(token):
         return keyword
 
 
-@property()
+@property(unstable=True)
 @single_keyword
 def column_fill(keyword):
     """``column-fill`` property validation."""
@@ -752,9 +786,8 @@ def font_size(token):
         return length
     font_size_keyword = get_keyword(token)
     if font_size_keyword in ('smaller', 'larger'):
-        raise InvalidValues('value not supported yet')
+        return font_size_keyword
     if font_size_keyword in computed_values.FONT_SIZE_KEYWORDS:
-        # or keyword in ('smaller', 'larger')
         return font_size_keyword
 
 
@@ -785,6 +818,15 @@ def font_weight(token):
     if token.type == 'number' and token.int_value is not None:
         if token.int_value in (100, 200, 300, 400, 500, 600, 700, 800, 900):
             return token.int_value
+
+
+@property()
+@single_keyword
+def object_fit(keyword):
+    # TODO: Figure out what the spec means by "'scale-down' flag".
+    #   As of this writing, neither Firefox nor chrome support
+    #   anything other than a single keyword as is done here.
+    return keyword in ('fill', 'contain', 'cover', 'none', 'scale-down')
 
 
 @property(unstable=True)
@@ -828,10 +870,38 @@ def list_style_position(keyword):
 
 
 @property()
-@single_keyword
-def list_style_type(keyword):
+@single_token
+def list_style_type(token):
     """``list-style-type`` property validation."""
-    return keyword == 'none' or keyword in counters.STYLES
+    if token.type == 'ident':
+        return token.value
+    elif token.type == 'string':
+        return ('string', token.value)
+    elif token.type == 'function' and token.name == 'symbols':
+        allowed_types = (
+            'cyclic', 'numeric', 'alphabetic', 'symbolic', 'fixed')
+        function_arguments = remove_whitespace(token.arguments)
+        if len(function_arguments) >= 1:
+            arguments = []
+            if function_arguments[0].type == 'ident':
+                if function_arguments[0].value in allowed_types:
+                    index = 1
+                    arguments.append(function_arguments[0].value)
+                else:
+                    return
+            else:
+                arguments.append('symbolic')
+                index = 0
+            if len(function_arguments) < index + 1:
+                return
+            for i in range(index, len(function_arguments)):
+                if function_arguments[i].type != 'string':
+                    return
+                arguments.append(function_arguments[i].value)
+            if arguments[0] in ('alphabetic', 'numeric'):
+                if len(arguments) < 3:
+                    return
+            return ('symbols()', tuple(arguments))
 
 
 @property('min-width')
@@ -900,7 +970,7 @@ def orphans_widows(token):
             return value
 
 
-@property()
+@property(unstable=True)
 @single_token
 def column_count(token):
     """Validation for the ``column-count`` property."""
@@ -921,16 +991,28 @@ def overflow(keyword):
 
 @property()
 @single_keyword
-def position(keyword):
+def text_overflow(keyword):
+    """Validation for the ``text-overflow`` property."""
+    return keyword in ('clip', 'ellipsis')
+
+
+@property()
+@single_token
+def position(token):
     """``position`` property validation."""
-    return keyword in ('static', 'relative', 'absolute', 'fixed')
+    if token.type == 'function' and token.name == 'running':
+        if len(token.arguments) == 1 and token.arguments[0].type == 'ident':
+            return ('running()', token.arguments[0].value)
+    keyword = get_single_keyword([token])
+    if keyword in ('static', 'relative', 'absolute', 'fixed'):
+        return keyword
 
 
 @property()
 def quotes(tokens):
     """``quotes`` property validation."""
     if (tokens and len(tokens) % 2 == 0 and
-            all(v.type == 'string' for v in tokens)):
+            all(token.type == 'string' for token in tokens)):
         strings = tuple(token.value for token in tokens)
         # Separate open and close quotes.
         # eg.  ('«', '»', '“', '”')  -> (('«', '“'), ('»', '”'))
@@ -949,23 +1031,26 @@ def table_layout(keyword):
 @single_keyword
 def text_align(keyword):
     """``text-align`` property validation."""
-    return keyword in ('left', 'right', 'center', 'justify')
+    return keyword in ('left', 'right', 'center', 'justify', 'start', 'end')
 
 
 @property()
-def text_decoration(tokens):
-    """``text-decoration`` property validation."""
-    keywords = [get_keyword(v) for v in tokens]
-    if keywords == ['none']:
+def text_decoration_line(tokens):
+    """``text-decoration-line`` property validation."""
+    keywords = {get_keyword(token) for token in tokens}
+    if keywords == {'none'}:
         return 'none'
-    if all(keyword in ('underline', 'overline', 'line-through', 'blink')
-            for keyword in keywords):
-        unique = set(keywords)
-        if len(unique) == len(keywords):
-            # No duplicate
-            # blink is accepted but ignored
-            # "Conforming user agents may simply not blink the text."
-            return frozenset(unique - set(['blink']))
+    allowed_values = {'underline', 'overline', 'line-through', 'blink'}
+    if len(tokens) == len(keywords) and keywords.issubset(allowed_values):
+        return keywords
+
+
+@property()
+@single_keyword
+def text_decoration_style(keyword):
+    """``text-decoration-style`` property validation."""
+    if keyword in ('solid', 'double', 'dotted', 'dashed', 'wavy'):
+        return keyword
 
 
 @property()
@@ -1114,7 +1199,7 @@ def size(tokens):
         elif len(lengths) == 2:
             return tuple(lengths)
 
-    keywords = [get_keyword(v) for v in tokens]
+    keywords = [get_keyword(token) for token in tokens]
     if len(keywords) == 1:
         keyword = keywords[0]
         if keyword in computed_values.PAGE_SIZES:
@@ -1293,25 +1378,33 @@ def bookmark_level(token):
         return 'none'
 
 
+@property(unstable=True)
+@single_keyword
+def bookmark_state(keyword):
+    """Validation for ``bookmark-state``."""
+    return keyword in ('open', 'closed')
+
+
 @property(unstable=True, wants_base_url=True)
 @comma_separated_list
 def string_set(tokens, base_url):
     """Validation for ``string-set``."""
     # Spec asks for strings after custom keywords, but we allow content-lists
     if len(tokens) >= 2:
-        var_name = get_keyword(tokens[0])
+        var_name = get_custom_ident(tokens[0])
         if var_name is None:
             return
         parsed_tokens = tuple(
             get_content_list_token(token, base_url) for token in tokens[1:])
         if None not in parsed_tokens:
             return (var_name, parsed_tokens)
-    elif tokens and tokens[0].value == 'none':
-        return 'none'
+    elif tokens and get_keyword(tokens[0]) == 'none':
+        return 'none', ()
 
 
-@property(unstable=True)
+@property()
 def transform(tokens):
+    """Validation for ``transform``."""
     if get_single_keyword(tokens) == 'none':
         return ()
     else:
@@ -1319,7 +1412,7 @@ def transform(tokens):
         for token in tokens:
             function = parse_function(token)
             if not function:
-                raise InvalidValues
+                return
             name, args = function
 
             if len(args) == 1:
@@ -1340,7 +1433,7 @@ def transform(tokens):
                 elif name == 'scale' and args[0].type == 'number':
                     transforms.append(('scale', (args[0].value,) * 2))
                 else:
-                    raise InvalidValues
+                    return
             elif len(args) == 2:
                 if name == 'scale' and all(a.type == 'number' for a in args):
                     transforms.append((name, tuple(arg.value for arg in args)))
@@ -1350,10 +1443,10 @@ def transform(tokens):
                     if name == 'translate' and all(lengths):
                         transforms.append((name, lengths))
                     else:
-                        raise InvalidValues
+                        return
             elif len(args) == 6 and name == 'matrix' and all(
                     a.type == 'number' for a in args):
                 transforms.append((name, tuple(arg.value for arg in args)))
             else:
-                raise InvalidValues
+                return
         return tuple(transforms)

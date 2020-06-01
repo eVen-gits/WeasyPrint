@@ -6,10 +6,7 @@
 
     The TargetCollector is a structure providing required targets'
     counter_values and stuff needed to build pending targets later,
-    when the layout of all targetted anchors has been done.
-
-    :copyright: Copyright 2018 Simon Sapin and contributors, see AUTHORS.
-    :license: BSD, see LICENSE for details.
+    when the layout of all targeted anchors has been done.
 
 """
 
@@ -18,10 +15,10 @@ import copy
 from ..logger import LOGGER
 
 
-class TargetLookupItem(object):
+class TargetLookupItem:
     """Item controlling pending targets and page based target counters.
 
-    Collected in the TargetCollector's ``items``.
+    Collected in the TargetCollector's ``target_lookup_items``.
 
     """
     def __init__(self, state='pending'):
@@ -43,7 +40,7 @@ class TargetLookupItem(object):
         self.cached_page_counter_values = {}
 
 
-class CounterLookupItem(object):
+class CounterLookupItem:
     """Item controlling page based counters.
 
     Collected in the TargetCollector's ``counter_lookup_items``.
@@ -67,7 +64,7 @@ class CounterLookupItem(object):
         self.cached_page_counter_values = {}
 
 
-class TargetCollector(object):
+class TargetCollector:
     """Collector of HTML targets used by CSS content with ``target-*``."""
 
     def __init__(self):
@@ -86,9 +83,6 @@ class TargetCollector(object):
         # to call the needed parse_again functions.
         self.had_pending_targets = False
 
-        # List of anchors that have already been seen during parsing.
-        self.existing_anchors = []
-
     def anchor_name_from_token(self, anchor_token):
         """Get anchor name from string or uri token."""
         if anchor_token[0] == 'string' and anchor_token[1].startswith('#'):
@@ -97,23 +91,13 @@ class TargetCollector(object):
             return anchor_token[1][1]
 
     def collect_anchor(self, anchor_name):
-        """Store ``anchor_name`` in ``existing_anchors``."""
+        """Create a TargetLookupItem for the given `anchor_name``."""
         if anchor_name and isinstance(anchor_name, str):
-            if anchor_name in self.existing_anchors:
+            if self.target_lookup_items.get(anchor_name) is not None:
                 LOGGER.warning('Anchor defined twice: %s', anchor_name)
             else:
-                self.existing_anchors.append(anchor_name)
-
-    def collect_computed_target(self, anchor_token):
-        """Store a computed internal target's ``anchor_name``.
-
-        ``anchor_name`` must not start with '#' and be already unquoted.
-
-        """
-        anchor_name = self.anchor_name_from_token(anchor_token)
-        if anchor_name:
-            self.target_lookup_items.setdefault(
-                anchor_name, TargetLookupItem())
+                self.target_lookup_items.setdefault(
+                    anchor_name, TargetLookupItem())
 
     def lookup_target(self, anchor_token, source_box, css_token, parse_again):
         """Get a TargetLookupItem corresponding to ``anchor_token``.
@@ -128,12 +112,9 @@ class TargetCollector(object):
             anchor_name, TargetLookupItem('undefined'))
 
         if item.state == 'pending':
-            if anchor_name in self.existing_anchors:
-                self.had_pending_targets = True
-                item.parse_again_functions.setdefault(
-                    (source_box, css_token), parse_again)
-            else:
-                item.state = 'undefined'
+            self.had_pending_targets = True
+            item.parse_again_functions.setdefault(
+                (source_box, css_token), parse_again)
 
         if item.state == 'undefined':
             LOGGER.error(

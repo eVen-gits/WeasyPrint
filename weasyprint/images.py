@@ -4,9 +4,6 @@
 
     Fetch and decode images in various formats.
 
-    :copyright: Copyright 2011-2014 Simon Sapin and contributors, see AUTHORS.
-    :license: BSD, see LICENSE for details.
-
 """
 
 import math
@@ -17,6 +14,7 @@ import cairocffi
 import cairosvg.parser
 import cairosvg.surface
 
+from .layout.percentages import percentage
 from .logger import LOGGER
 from .urls import URLFetchingError, fetch
 
@@ -53,7 +51,7 @@ class ImageLoadingError(ValueError):
         return cls('%s: %s' % (name, value) if value else name)
 
 
-class RasterImage(object):
+class RasterImage:
     def __init__(self, image_surface):
         self.image_surface = image_surface
         self._intrinsic_width = image_surface.get_width()
@@ -68,16 +66,23 @@ class RasterImage(object):
                 self._intrinsic_height / image_resolution)
 
     def draw(self, context, concrete_width, concrete_height, image_rendering):
-        if concrete_width > 0 and concrete_height > 0 and \
-                self._intrinsic_width > 0 and self._intrinsic_height > 0:
-            # Use the real intrinsic size here,
-            # not affected by 'image-resolution'.
-            context.scale(concrete_width / self._intrinsic_width,
-                          concrete_height / self._intrinsic_height)
-            context.set_source_surface(self.image_surface)
-            context.get_source().set_filter(
-                IMAGE_RENDERING_TO_FILTER[image_rendering])
-            context.paint()
+        has_size = (
+            concrete_width > 0
+            and concrete_height > 0
+            and self._intrinsic_width > 0
+            and self._intrinsic_height > 0
+        )
+        if not has_size:
+            return
+
+        # Use the real intrinsic size here,
+        # not affected by 'image-resolution'.
+        context.scale(concrete_width / self._intrinsic_width,
+                      concrete_height / self._intrinsic_height)
+        context.set_source_surface(self.image_surface)
+        context.get_source().set_filter(
+            IMAGE_RENDERING_TO_FILTER[image_rendering])
+        context.paint()
 
 
 class ScaledSVGSurface(cairosvg.surface.SVGSurface):
@@ -87,11 +92,11 @@ class ScaledSVGSurface(cairosvg.surface.SVGSurface):
     """
     @property
     def device_units_per_user_units(self):
-        scale = super(ScaledSVGSurface, self).device_units_per_user_units
+        scale = super().device_units_per_user_units
         return scale / 0.75
 
 
-class FakeSurface(object):
+class FakeSurface:
     """Fake CairoSVG surface used to get SVG attributes."""
     context_height = 0
     context_width = 0
@@ -99,7 +104,7 @@ class FakeSurface(object):
     dpi = 96
 
 
-class SVGImage(object):
+class SVGImage:
     def __init__(self, svg_data, base_url, url_fetcher):
         # Don’t pass data URIs to CairoSVG.
         # They are useless for relative URIs anyway.
@@ -156,8 +161,8 @@ class SVGImage(object):
                 cairosvg.parser.Tree(
                     bytestring=self._svg_data, url=self._base_url,
                     url_fetcher=self._cairosvg_url_fetcher),
-                output=None, dpi=96, parent_width=concrete_width,
-                parent_height=concrete_height)
+                output=None, dpi=96, output_width=concrete_width,
+                output_height=concrete_height)
             if svg.width and svg.height:
                 context.scale(
                     concrete_width / svg.width, concrete_height / svg.height)
@@ -226,17 +231,6 @@ def get_image_from_uri(cache, url_fetcher, url, forced_mime_type=None):
     return image
 
 
-def percentage(value, refer_to):
-    """Return the evaluated percentage value, or the value unchanged."""
-    if value is None:
-        return value
-    elif value.unit == 'px':
-        return value.value
-    else:
-        assert value.unit == '%'
-        return refer_to * value.value / 100
-
-
 def process_color_stops(gradient_line_size, positions):
     """
     Gradient line size: distance between the starting point and ending point.
@@ -248,8 +242,8 @@ def process_color_stops(gradient_line_size, positions):
     Return processed color stops, as a list of floats in px.
 
     """
-    positions = [percentage(position, gradient_line_size)
-                 for position in positions]
+    positions = [
+        percentage(position, gradient_line_size) for position in positions]
     # First and last default to 100%
     if positions[0] is None:
         positions[0] = 0
@@ -324,7 +318,7 @@ PATTERN_TYPES = dict(
     solid=cairocffi.SolidPattern)
 
 
-class Gradient(object):
+class Gradient:
     def __init__(self, color_stops, repeating):
         assert color_stops
         #: List of (r, g, b, a), list of Dimension
@@ -505,7 +499,9 @@ class RadialGradient(Gradient):
     def _resolve_size(self, width, height, center_x, center_y):
         if self.size_type == 'explicit':
             size_x, size_y = self.size
-            return percentage(size_x, width), percentage(size_y, height)
+            size_x = percentage(size_x, width)
+            size_y = percentage(size_y, height)
+            return size_x, size_y
         left = abs(center_x)
         right = abs(width - center_x)
         top = abs(center_y)

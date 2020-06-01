@@ -4,9 +4,6 @@
 
     Tests for image layout.
 
-    :copyright: Copyright 2011-2018 Simon Sapin and contributors, see AUTHORS.
-    :license: BSD, see LICENSE for details.
-
 """
 
 import pytest
@@ -300,6 +297,36 @@ def test_images_16():
     assert img.element_tag == 'img'
     assert img.width == 300
     assert img.height == 200
+
+
+@assert_no_logs
+def test_images_17():
+    page, = parse('''
+        <div style="width: 300px; height: 300px">
+        <img src="
+            data:image/svg+xml,
+            <svg viewBox='0 0 20 10'></svg>
+        ">''')
+    html, = page.children
+    body, = html.children
+    div, = body.children
+    line, = div.children
+    img, = line.children
+    assert div.width == 300
+    assert div.height == 300
+    assert img.element_tag == 'img'
+    assert img.width == 300
+    assert img.height == 150
+
+
+@assert_no_logs
+def test_images_18():
+    # Test regression: https://github.com/Kozea/WeasyPrint/issues/1050
+    page, = parse('''
+        <img style="position: absolute" src="
+            data:image/svg+xml,
+            <svg viewBox='0 0 20 10'></svg>
+        ">''')
 
 
 @assert_no_logs
